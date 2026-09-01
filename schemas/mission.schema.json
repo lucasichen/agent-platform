@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform.local/schemas/mission.schema.json",
+  "title": "Mission",
+  "description": "Durable, versioned goal-level unit above a task. Spec §6.0, §3.1. Normative example: spec §6.0 (PROJECT-CODING-GRADER).",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z0-9][A-Z0-9-]+$",
+      "description": "SCREAMING-KEBAB mission id (DESIGN.md §3)."
+    },
+    "type": {
+      "type": "string",
+      "description": "Workflow template id this mission runs (spec §6.0). Free-form: the workflow registry, not this schema, is authoritative on which ids exist."
+    },
+    "workflow": {
+      "type": "object",
+      "description": "Pinned workflow template binding (spec §6.0).",
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["id", "version"],
+      "additionalProperties": false
+    },
+    "goal": {
+      "type": "string",
+      "description": "Human-authored goal statement (spec §6.0)."
+    },
+    "parent_mission": {
+      "type": ["string", "null"],
+      "description": "Parent mission id, or null for a root mission (spec §6.0, §3.1)."
+    },
+    "inputs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Input artifact names available to the mission (spec §6.0)."
+    },
+    "outputs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Required output artifact names the workflow must cover (spec §6.0; checked by the F.0 compiler)."
+    },
+    "constraints": {
+      "type": "object",
+      "description": "Free-form constraint map, e.g. { language: C++20 } (spec §6.0). Open-ended by design.",
+      "additionalProperties": true
+    },
+    "budget": {
+      "type": "object",
+      "description": "Mission budget. Child mission budgets draw down the parent's remaining budget (spec §6.0).",
+      "properties": {
+        "dollars": { "type": "number", "minimum": 0 }
+      },
+      "required": ["dollars"],
+      "additionalProperties": false
+    },
+    "human_gates": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Named human approval gates for this mission (spec §6.0). Creating a child mission is a human gate by default."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["DRAFT", "ACTIVE", "BLOCKED", "COMPLETE", "ABANDONED"],
+      "description": "Mission lifecycle status (DESIGN.md §3)."
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "workflow",
+    "goal",
+    "parent_mission",
+    "inputs",
+    "outputs",
+    "constraints",
+    "budget",
+    "human_gates",
+    "status"
+  ],
+  "additionalProperties": false
+}

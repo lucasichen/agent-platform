@@ -1,0 +1,111 @@
+# policies/escalation.yaml
+#
+# What this is: the platform's default escalation policy — when a worker
+# must stop and hand a decision to a human/design authority instead of
+# improvising (spec §5.2), when repeated repair attempts must stop
+# patching and escalate to root-cause debugging (spec §8.1), and what
+# gets surfaced to human attention versus suppressed as noise (spec
+# §14.5). Copied into target repos by `agent init` as
+# .agent/policies/escalation.yaml.
+#
+# Spec section: §5.2 (worker freedom / worker escalation triggers), §8.1
+# (debugging escalation), §14.5 (human attention).
+#
+# Owner (role, not a person): repo-maintainer, with design-authority
+# sign-off required on any change to `must_escalate` (spec §12.4 — every
+# durable artifact names an owning role).
+#
+# Staleness trigger (spec §12.4): a retrospective (spec §13.2) that
+# attributes a PLANNING or ARCHITECTURE failure to a worker silently
+# deciding something on this list's boundary re-triggers review of
+# `must_escalate`; a dashboard (spec §14.5) that is either flooded with
+# noise or silent through a real incident re-triggers review of
+# `human_attention.surface` / `human_attention.suppress`.
+
+# --- spec §5.2: worker design-decision escalation -------------------
+
+# Workers may decide these independently, no escalation required.
+worker_may_decide:
+  - private helper structure
+  - local algorithms
+  - naming
+  - test organization
+  - small local refactors
+  - internal implementation details
+
+# A worker that is about to make any of these decisions must stop and
+# escalate instead of improvising (spec §5.2). This is the generic
+# must-escalate list checked regardless of the task's assigned risk
+# level; see policies/risk.yaml's third_party_dependency_escalation for
+# the specific risk-floor consequence of the last item.
+must_escalate:
+  - new service
+  - new domain abstraction
+  - new public interface
+  - ownership change
+  - API contract change
+  - new persistence abstraction
+  - dependency-direction change
+  - duplicate domain concept
+  - cross-module bypass
+  - new third-party dependency
+
+# The escalation path a worker follows once it hits a must_escalate
+# trigger (spec §5.2 workflow diagram). Ordered; execution does not
+# resume until the last step completes.
+design_escalation_workflow:
+  - step: stop
+    detail: Worker stops architectural invention immediately on discovering the design question.
+  - step: escalate
+    detail: Escalate to design authority (spec §5.1).
+  - step: adjudicate
+    detail: Architect / arena if necessary (spec Appendix C).
+  - step: record
+    detail: ADR or design document updated with the resolved decision.
+  - step: propagate
+    detail: Affected tasks are updated to reflect the new decision.
+  - step: resume
+    detail: Execution resumes under the updated design.
+
+# --- spec §8.1: debugging escalation (the three-failure rule) -------
+
+# Prevents agents from endlessly stacking workarounds. Failure count is
+# per task attempt sequence, reset when the task is DONE or when a new
+# root cause is confirmed.
+debugging_escalation:
+  - after_failure: 1
+    action: diagnose
+    detail: Standard diagnosis with the current worker/context.
+  - after_failure: 2
+    action: fresh-diagnosis
+    detail: Fresh diagnosis pass, stronger context. Do not simply retry the same fix.
+  - after_failure: 3
+    action: stop-patching
+    detail: >
+      STOP PATCHING. Root-cause escalation to a strong debugger. If
+      architecture is suspected as the root cause, escalate further to
+      the architect role (spec §8.1). Repeated repair failure is
+      evidence assumptions or architecture may be wrong, not evidence
+      the worker needs one more attempt.
+
+# --- spec §14.5: what reaches human attention -----------------------
+
+# Humans monitor exceptions, not agent activity. These are the exception
+# classes a fleet dashboard (`agent status`, spec §14.5) must surface.
+human_attention:
+  surface:
+    - architecture ambiguity
+    - contradictory requirements
+    - repeated verification failure
+    - security-sensitive discovery
+    - budget exhaustion
+    - review disagreement
+    - semantic merge conflict
+    - production regression
+  # Explicitly not surfaced as attention items — routine agent activity,
+  # tracked in logs/evidence bundles but never presented as something a
+  # human should look at (spec §14.5).
+  suppress:
+    - agent reading file
+    - agent running test
+    - agent writing code

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform.local/schemas/repo.schema.json",
+  "title": "Repo",
+  "description": "Repository self-description, .agent/repo.yaml (spec Appendix A). Owner: repo maintainer role; staleness trigger: commands are executed in CI, a broken command fails the build (spec §12.4). Normative example: spec Appendix A (portal).",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Repository name (Appendix A)."
+    },
+    "type": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Stack/framework tags, e.g. [backbone, express] (Appendix A)."
+    },
+    "setup": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Setup commands, e.g. npm install (Appendix A)."
+    },
+    "services": {
+      "type": "object",
+      "description": "Named runnable services (Appendix A).",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "command": { "type": "string" },
+          "health": { "type": "string", "description": "Health-check URL, may contain ${VAR} placeholders." }
+        },
+        "required": ["command"],
+        "additionalProperties": true
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "description": "External dependencies the repo needs at runtime, e.g. postgres: { container: true } (Appendix A). Open-ended per dependency.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "verification": {
+      "type": "object",
+      "description": "Deterministic verification commands/skills, resolved by the verifier (spec §9, Appendix A). Each entry is either a runnable command or a named skill.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "command": { "type": "string" },
+          "skill": { "type": "string" }
+        },
+        "anyOf": [
+          { "type": "object", "properties": { "command": { "type": "string" } }, "required": ["command"] },
+          { "type": "object", "properties": { "skill": { "type": "string" } }, "required": ["skill"] }
+        ],
+        "additionalProperties": true
+      }
+    }
+  },
+  "required": ["name", "type", "setup", "services", "verification"],
+  "additionalProperties": false
+}

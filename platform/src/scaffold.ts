@@ -1,0 +1,56 @@
+// `agent init` (spec Appendix A, DESIGN.md §6 item 9): installs the .agent/
+// scaffold and the default policies into a target repo. Never overwrites a
+// file that already exists there; reports what was created vs. skipped so
+// re-running `agent init` is safe (idempotent).
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { agentDir, policiesDirIn } from "./paths";
+import { copyDirNoOverwrite, ensureDir } from "./fsutil";
+import { repoScaffoldDir, policiesDir } from "./assets";
+
+export interface InitResult {
+  repo: string;
+  agentDir: string;
+  scaffoldCreated: string[];
+  scaffoldSkipped: string[];
+  policiesCreated: string[];
+  policiesSkipped: string[];
+}
+
+export function initRepo(repo: string): InitResult {
+  ensureDir(agentDir(repo));
+
+  const scaffoldSrc = repoScaffoldDir(); // templates/repo/.agent
+  const scaffoldDest = agentDir(repo);
+  const allScaffoldFiles = listAllRelativeFiles(scaffoldSrc);
+  const scaffoldSkipped = copyDirNoOverwrite(scaffoldSrc, scaffoldDest);
+  const scaffoldCreated = allScaffoldFiles.filter((f) => !scaffoldSkipped.includes(f));
+
+  const policiesSrc = policiesDir(); // /policies at the platform repo root
+  const policiesDest = policiesDirIn(repo);
+  const allPolicyFiles = listAllRelativeFiles(policiesSrc);
+  const policiesSkipped = copyDirNoOverwrite(policiesSrc, policiesDest);
+  const policiesCreated = allPolicyFiles.filter((f) => !policiesSkipped.includes(f));
+
+  return {
+    repo,
+    agentDir: scaffoldDest,
+    scaffoldCreated,
+    scaffoldSkipped,
+    policiesCreated,
+    policiesSkipped,
+  };
+}
+
+function listAllRelativeFiles(dir: string, relBase = ""): string[] {
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const rel = relBase ? path.join(relBase, entry.name) : entry.name;
+    if (entry.isDirectory()) {
+      out.push(...listAllRelativeFiles(path.join(dir, entry.name), rel));
+    } else if (entry.isFile()) {
+      out.push(rel);
+    }
+  }
+  return out;
+}

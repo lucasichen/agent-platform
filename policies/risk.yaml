@@ -1,0 +1,113 @@
+# policies/risk.yaml
+#
+# What this is: the platform's default risk policy — the R0-R4 table that
+# is the Phase-1 router, full stop (spec §10.5, §7.3 "Phase 1 — static
+# policy"). `agent route <task>` resolves a task's risk level against this
+# file to pick planning/implementation tier, verification depth, required
+# review lenses, human approval, and staged-release requirements. Copied
+# into target repos by `agent init` as .agent/policies/risk.yaml, where it
+# becomes editable per-repo policy.
+#
+# Spec section: §10.5 (risk table), §7.1 (routing tree), §9.5 (verification
+# depth tiers), §10.4 (decorrelated review lenses), §5.2 (worker escalation
+# triggers, including "new third-party dependency").
+#
+# Owner (role, not a person): repo maintainer role, with design-authority
+# sign-off required on any change to tier/lens/approval requirements
+# (spec §12.4 — every durable artifact names an owning role).
+#
+# Staleness trigger (spec §12.4): re-review a risk level's row whenever a
+# retrospective (spec §13.2) attributes a failure to ROUTING for that
+# level, or whenever an incident/escaped regression (Appendix D) is traced
+# to a task at that level. A row that has not been touched in >180 days
+# while the fleet is active is a hint to re-verify it against current
+# outcomes, not to trust it blindly (spec §12.4 trust decay rule).
+#
+# Resolved ambiguity: the spec table (§10.5) names a single "required
+# process" per level in prose, not separate planning_tier /
+# implementation_tier / required_review_lenses fields. This file expands
+# that prose into the structured fields DESIGN.md §4 requires, using the
+# §7.1 routing tree ("architecture resolved? -> strong/frontier planning;
+# bounded implementation? -> cheap/mid, else stronger") to split planning
+# tier from implementation tier: strong/frontier planning is expected to
+# produce a bounded design that a cheaper worker can then implement, which
+# is the platform's core economic argument (§7.2). required_review_lenses
+# for R2 is inferred as the baseline spec+quality lenses (§10.1, §10.2,
+# always-on for any reviewed change); R3 adds architecture per the table's
+# explicit "architecture review"; R4 adds security per §10.4's "add a
+# fourth security/adversarial lens for sensitive tasks."
+
+levels:
+  R0:
+    description: >
+      Lowest risk. No behavior change; nothing to verify beyond
+      deterministic checks.
+    example: docs/formatting
+    planning_tier: cheap
+    implementation_tier: cheap
+    verification_depth: deterministic
+    required_review_lenses: []
+    human_approval: false
+    staged_release: false
+
+  R1:
+    description: >
+      Small, local, easily reverted change with limited blast radius.
+    example: small local/UI change
+    planning_tier: cheap
+    implementation_tier: cheap
+    verification_depth: smoke
+    required_review_lenses: []
+    human_approval: false
+    staged_release: false
+
+  R2:
+    description: >
+      Ordinary product work: a normal feature change touching real
+      runtime behavior, reviewed before merge.
+    example: normal feature
+    planning_tier: mid
+    implementation_tier: mid
+    verification_depth: runtime
+    required_review_lenses: [spec, quality]
+    human_approval: false
+    staged_release: false
+
+  R3:
+    description: >
+      Touches auth, a public API, a schema, or other core behavior.
+      Requires strong upfront design so implementation can stay bounded,
+      plus an architecture review layer (spec §10.3).
+    example: auth/API/schema/core behavior
+    planning_tier: strong
+    implementation_tier: mid
+    verification_depth: isolated-runtime
+    required_review_lenses: [spec, quality, architecture]
+    human_approval: false
+    staged_release: false
+
+  R4:
+    description: >
+      Security-sensitive, critical-architecture, or data-migration work.
+      Highest process cost: frontier design, every review lens, explicit
+      human sign-off, and a staged rollout.
+    example: security/critical architecture/data migration
+    planning_tier: frontier
+    implementation_tier: strong
+    verification_depth: isolated-runtime
+    required_review_lenses: [spec, quality, architecture, security]
+    human_approval:
+      - security-approval
+      - release-approval
+    staged_release: true
+
+# spec §5.2: workers must escalate a "new third-party dependency" rather
+# than deciding unilaterally (it is in the must-escalate list alongside
+# new services, new public interfaces, and ownership changes). This repo's
+# policy convention: any task that turns out to require a new third-party
+# dependency is treated as at least R3, regardless of its original risk
+# estimate, because it is by construction an architectural/design
+# decision (spec §5.1) rather than an implementation detail (§5.2).
+third_party_dependency_escalation:
+  trigger: new third-party dependency
+  minimum_risk: R3

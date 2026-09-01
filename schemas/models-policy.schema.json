@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform.local/schemas/models-policy.schema.json",
+  "title": "Models Policy",
+  "description": "policies/models.yaml — capability-tier abstraction and harness profile bindings (DESIGN.md §5, spec §7.1, §7.3, §12.4). The platform speaks tiers, never vendor models; profiles are illustrative, editable, dated mappings from tiers to example models per harness. Owner: repo maintainer role; staleness trigger: as_of older than 90 days ⇒ treat as hint (spec §12.4, DESIGN.md §5).",
+  "type": "object",
+  "properties": {
+    "tiers": {
+      "type": "array",
+      "description": "Ordered capability tiers, strongest first (DESIGN.md §5).",
+      "items": {
+        "type": "string",
+        "enum": ["frontier", "strong", "mid", "cheap"]
+      },
+      "minItems": 4,
+      "uniqueItems": true
+    },
+    "profiles": {
+      "type": "object",
+      "description": "Per-harness tier bindings (DESIGN.md §5).",
+      "properties": {
+        "generic": { "$ref": "#/$defs/profile" },
+        "cursor": { "$ref": "#/$defs/profile" },
+        "claude-code": { "$ref": "#/$defs/profile" }
+      },
+      "required": ["generic", "cursor", "claude-code"],
+      "additionalProperties": { "$ref": "#/$defs/profile" }
+    },
+    "active_profile": {
+      "type": "string",
+      "description": "The profile currently in effect (DESIGN.md §5). Default: generic."
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO-8601 UTC date the model catalog mappings were last verified (spec §12.4)."
+    },
+    "owner": {
+      "type": "string",
+      "description": "Owning role, not a person (spec §12.4). Repo maintainer role for this artifact."
+    }
+  },
+  "required": ["tiers", "profiles", "active_profile", "as_of", "owner"],
+  "additionalProperties": true,
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "description": "Maps each capability tier to a description (generic profile) or an example model binding (harness profiles). Values are free-form strings so a harness profile can name an actual model while the generic profile stays vendor-neutral (DESIGN.md §5).",
+      "properties": {
+        "frontier": { "type": "string" },
+        "strong": { "type": "string" },
+        "mid": { "type": "string" },
+        "cheap": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

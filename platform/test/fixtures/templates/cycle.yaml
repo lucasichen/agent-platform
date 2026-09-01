@@ -1,0 +1,29 @@
+# Rejection-class fixture: stages 'a' and 'b' depend on each other.
+id: cycle
+version: 1
+description: Two stages with a circular dependency.
+
+entry_conditions:
+  - "mission goal is a small, bounded change"
+
+required_inputs:
+  - "brief.md"
+
+stages:
+  - id: a
+    role: worker
+    type: implementation
+    depends_on: [b]
+    outputs: [output-a]
+
+  - id: b
+    role: worker
+    type: implementation
+    depends_on: [a]
+    outputs: [output-b]
+
+required_outputs:
+  - output-a
+  - output-b
+
+terminal_condition: "unreachable: this template never validates"

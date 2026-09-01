@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform.local/schemas/retrospective.schema.json",
+  "title": "Retrospective",
+  "description": "Fast-loop task retrospective produced by the Learning Evaluator, .agent/runs/<TASK-ID>/retrospective.json (spec §13.2, F.10, Appendix B, DESIGN.md §3). Proposals are candidates and are never auto-applied. Normative example: spec F.10 (ACCOUNT-12).",
+  "type": "object",
+  "properties": {
+    "task": {
+      "type": "string",
+      "description": "Task id this retrospective covers (spec F.10)."
+    },
+    "trigger": {
+      "type": "string",
+      "enum": [
+        "failed-task",
+        "architecture-rejection",
+        "human-correction",
+        "high-cost-run",
+        "unexpected-escalation",
+        "rollback",
+        "strong-success"
+      ],
+      "description": "Trigger event, per the §13.2 trigger list (failed task / architecture rejection / human correction / high-cost run / unexpected escalation / rollback / unusually strong success worth learning from)."
+    },
+    "cause": {
+      "type": "string",
+      "enum": [
+        "SPEC",
+        "PLANNING",
+        "ARCHITECTURE",
+        "ROUTING",
+        "CONTEXT",
+        "SKILL",
+        "MEMORY",
+        "HARNESS",
+        "TOOLING",
+        "CODEBASE",
+        "MODEL"
+      ],
+      "description": "Cause taxonomy (spec §13.2 'Why?' classification)."
+    },
+    "candidate_interventions": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Proposed interventions, preferring 'make the mistake impossible' over prose (spec §13.2, F.10 Done means).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "skill",
+              "lint-rule",
+              "test",
+              "architecture-invariant",
+              "canonical-pattern",
+              "verification-harness",
+              "field-guide",
+              "router-policy",
+              "task-decomposition-policy",
+              "tooling"
+            ],
+            "description": "Intervention category, per the §13.2 'What should change?' list."
+          },
+          "detail": { "type": "string" }
+        },
+        "required": ["kind", "detail"],
+        "additionalProperties": false
+      }
+    },
+    "eval_case": {
+      "type": "string",
+      "description": "Path to a replayable eval case this failure produced, e.g. .agent/evals/architecture/ARCH-017.yaml (spec §13.5, F.10). Optional: not every retrospective yields a new eval case."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["proposed", "accepted", "rejected", "applied"],
+      "description": "Retrospective status. F.10 always writes 'proposed' — interventions are never auto-applied (spec F.10); 'accepted'/'rejected'/'applied' are the human- or canary-driven promotion states implied by §13.6 and F.10's 'humans or canaries promote them' (inferred lifecycle, not a literal spec enum)."
+    }
+  },
+  "required": ["task", "trigger", "cause", "candidate_interventions", "status"],
+  "additionalProperties": false
+}

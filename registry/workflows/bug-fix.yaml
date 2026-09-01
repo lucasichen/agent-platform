@@ -1,0 +1,97 @@
+# Workflow template: bug-fix
+#
+# Purpose (spec §3.2): reproduce, diagnose, repair, and prevent regression.
+# Composition only — see roles/F0-workflow-compiler.md. Shape conforms to
+# docs/DESIGN.md §3 "Workflow template". No stage below needs a
+# `condition` block: bug-fix has no "if needed" branches — every stage
+# always runs, including the closing retrospective, which the spec's
+# workflow-registry table (§3.2) fixes as unconditional for this workflow
+# ("...→ merge → reflect").
+
+id: bug-fix
+version: 1
+description: >
+  Reproduce and diagnose a defect, repair it with a failing-test-first
+  worker, verify and review the fix, merge it, and always feed the
+  outcome into the learning loop.
+
+entry_conditions:
+  - "mission.goal describes an observed defect (reported failure, incorrect behavior, regression)"
+
+required_inputs:
+  - "mission goal: defect description and reproduction context"
+  - "repository operating contract (.agent/) — verification commands, canonical patterns"
+  - "risk policy (policies/risk.yaml)"
+
+stages:
+
+  # --- Reproduce / diagnose (spec §8, §8.1 diagnosing-bugs / systematic-debugging guidance) ---
+  # Owned by the worker role: spec §8 places "create failing
+  # test/reproduction" and the whole debugging-escalation ladder (§8.1)
+  # inside the Worker Execution Protocol, not a separate role contract.
+  # Typed `verification`: this stage's product is evidence that the defect
+  # exists and a root-cause hypothesis (a failing reproduction), not a fix.
+  - id: reproduce-diagnose
+    role: worker
+    type: verification
+    depends_on: []
+    outputs:
+      - artifact://diagnosis/repro.md
+      - artifact://diagnosis/failing-test
+
+  # --- Worker fix, failing-test-first (spec §8, role: roles/F6-worker.md) ---
+  - id: fix
+    role: worker
+    type: implementation
+    depends_on: [reproduce-diagnose]
+    outputs:
+      - candidate-diff
+
+  # --- Verification (spec §9, role: roles/F7-verifier.md) ---
+  - id: verify
+    role: verifier
+    type: verification
+    depends_on: [fix]
+    outputs:
+      - verification-result
+
+  # --- Review (spec §10, role: roles/F8-reviewer.md) ---
+  - id: review
+    role: reviewer
+    type: review
+    depends_on: [verify]
+    condition:
+      predicate: "required review lenses = policies/risk.yaml required_review_lenses[task.risk]"
+    outputs:
+      - review-verdict/spec.json
+      - review-verdict/quality.json
+      - review-verdict/architecture.json
+
+  # --- Merge (spec §11, role: roles/F9-merge-refinery.md) ---
+  - id: merge
+    role: merge-refinery
+    type: implementation
+    depends_on: [review]
+    outputs:
+      - merged-commit
+
+  # --- Retrospective (spec §3.2 registry table, §13.2, role: roles/F10-learning-evaluator.md) ---
+  # Unconditional: the workflow-registry table's bug-fix composition ends
+  # "...→ merge → reflect" with no owner/predicate qualifier, unlike the
+  # "if needed" branches in project-definition and feature-development.
+  # Bug-fix outcomes always feed the fast learning loop (spec §13.2),
+  # because every bug is itself evidence a prior gate underdelivered.
+  - id: retrospective
+    role: learning-evaluator
+    type: retrospective
+    depends_on: [merge]
+    outputs:
+      - retrospective-record
+
+required_outputs:
+  - merged-commit
+  - retrospective-record
+
+terminal_condition: >
+  merge stage is DONE (MERGED) AND retrospective stage is DONE
+  (retrospective.json filed per docs/DESIGN.md §3 Evidence bundle).

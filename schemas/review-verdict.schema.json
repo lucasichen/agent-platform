@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform.local/schemas/review-verdict.schema.json",
+  "title": "Review Verdict",
+  "description": "One verdict file per required review lens, stored under .agent/runs/<TASK-ID>/reviews/<lens>.json or with mission artifacts (spec F.8, Appendix B). Normative example: spec F.8 architecture verdict.",
+  "type": "object",
+  "properties": {
+    "lens": {
+      "type": "string",
+      "description": "Review lens name. Code review lenses are spec/quality/architecture/security (policies/risk.yaml required_review_lenses, spec §10.4/§10.5); project-definition uses a different lens set (intent/coverage, research grounding, architecture, ambiguity per F.8). Left open-ended here since both families of lens names are valid."
+    },
+    "artifact": {
+      "type": "string",
+      "description": "The reviewed artifact, e.g. a diff, project-spec.md, or a candidate change (spec F.8)."
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["PASS", "FAIL"],
+      "description": "Each mandatory lens returns PASS/FAIL with findings (spec F.8 Done means)."
+    },
+    "findings": {
+      "type": "array",
+      "description": "Findings citing the reviewed artifact, source evidence, spec lines, or decision_refs — never taste alone (spec F.8). May be empty on PASS.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "Finding category, e.g. unsupported-design-claim (spec F.8 example)."
+          },
+          "detail": { "type": "string" },
+          "ref": {
+            "type": "string",
+            "description": "Cited source, e.g. an ADR id (spec F.8 example)."
+          },
+          "location": {
+            "type": "string",
+            "description": "Location within the reviewed artifact, e.g. project-spec.md#account-deletion (spec F.8 example)."
+          }
+        },
+        "required": ["kind", "detail"],
+        "additionalProperties": false
+      }
+    },
+    "reviewer": {
+      "type": "string",
+      "description": "Reviewer binding id, e.g. arch-reviewer-02 (spec F.8). Reviewer must be decorrelated from the implementer (spec §10.3 Judge decorrelation, §10.4)."
+    }
+  },
+  "required": ["lens", "artifact", "verdict", "findings", "reviewer"],
+  "additionalProperties": false
+}

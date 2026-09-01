@@ -1,0 +1,181 @@
+# Workflow template: project-definition
+#
+# Purpose (spec §3.2): turn a project idea into an approved engineering spec
+# and an implementation task graph, then spawn the child mission that
+# executes it. Composition only — see roles/F0-workflow-compiler.md for the
+# compiler contract that instantiates this template into a workflow-instance.
+#
+# Shape conforms to docs/DESIGN.md §3 "Workflow template". Every stage maps
+# to a role contract in /roles. Every conditional stage below carries either
+# a mechanical `predicate` or an owning `role` (spec §3.2) — never a bare
+# "if needed".
+
+id: project-definition
+version: 1
+description: >
+  Turn a project idea into an approved engineering spec and an
+  implementation task graph, then hand execution to a child mission.
+
+entry_conditions:
+  - "mission.goal describes a project, capability, or subsystem to define — not a single bounded change"
+  - "no existing approved-project-spec artifact already satisfies mission.goal"
+
+required_inputs:
+  - "mission goal and constraints (mission.yaml)"
+  - "human product/business constraints, if any"
+  - "existing domain/CONTEXT.md and architecture/ artifacts, if this is an existing repository"
+
+stages:
+
+  # --- Uncertainty assessment (spec §4.1, role: roles/F1-uncertainty-resolver.md) ---
+  - id: uncertainty-assessment
+    role: uncertainty-resolver
+    type: research
+    depends_on: []
+    outputs:
+      - artifact://research/open-questions.md
+
+  # --- Parallel research/prototype fan-out (spec §3.2 diagram, §4.1) ---
+  # The compiler binds the concrete questions from uncertainty-assessment's
+  # output to these branches at `agent workflow instantiate` time; the
+  # template fixes the fan-out shape (two research branches + one prototype
+  # branch, matching the spec's project-definition diagram) as its literal
+  # composition. Independent questions, so no depends_on between them.
+  - id: research-a
+    role: uncertainty-resolver
+    type: research
+    depends_on: [uncertainty-assessment]
+    outputs:
+      - artifact://research/question-1.md
+
+  - id: research-b
+    role: uncertainty-resolver
+    type: research
+    depends_on: [uncertainty-assessment]
+    outputs:
+      - artifact://research/question-2.md
+
+  - id: prototype-a
+    role: uncertainty-resolver
+    type: prototype
+    depends_on: [uncertainty-assessment]
+    outputs:
+      - artifact://research/prototype-1-findings.md
+
+  # --- Domain + product requirements (spec §4.2-§4.3, role: roles/F1A-domain-product-clarifier.md) ---
+  - id: domain-product
+    role: domain-product-clarifier
+    type: domain
+    depends_on: [research-a, research-b, prototype-a]
+    outputs:
+      - domain/CONTEXT.md
+      - product-requirements.md
+
+  # --- Architecture / design authority (spec §4.4, §5.1, role: roles/F3-architect.md) ---
+  # The stage itself is NOT conditional — every project-definition mission
+  # needs an architecture decision before spec synthesis. What IS a
+  # judgment call is *how much* design exploration to run (a single design
+  # vs. an /arena-equivalent multi-candidate evaluation). Spec §4.4: "Use
+  # /arena only when multiple consequential designs are credible." That
+  # judgment has no mechanical predicate, so per spec §3.2 it is owned by
+  # the architect role itself, not decided by the compiler or the template.
+  - id: architecture
+    role: architect
+    type: architecture
+    depends_on: [research-a, research-b, prototype-a, domain-product]
+    condition:
+      owner: architect
+      # Owning role decides, per task: run a single-design pass, or an
+      # arena-equivalent multi-candidate evaluation when multiple
+      # consequential designs are credible (spec §4.4).
+    outputs:
+      - architecture-design
+
+  # --- Engineering-spec synthesis (spec §4.5, role: roles/F2-specifier.md) ---
+  - id: specification
+    role: specifier
+    type: specification
+    depends_on: [domain-product, architecture]
+    outputs:
+      - project-spec
+
+  # --- Independent spec reviews, four decorrelated lenses (spec §3.2 diagram, F.8) ---
+  # Each lens is an independent reviewer instance with no shared verdict
+  # (spec §10.4). None reads another lens's findings before returning its
+  # own verdict.
+  - id: spec-review-intent-coverage
+    role: reviewer
+    type: review
+    depends_on: [specification]
+    outputs:
+      - review-verdict/intent-coverage.json
+
+  - id: spec-review-research-grounding
+    role: reviewer
+    type: review
+    depends_on: [specification]
+    outputs:
+      - review-verdict/research-grounding.json
+
+  - id: spec-review-architecture
+    role: reviewer
+    type: review
+    depends_on: [specification]
+    outputs:
+      - review-verdict/architecture.json
+
+  - id: spec-review-ambiguity
+    role: reviewer
+    type: review
+    depends_on: [specification]
+    outputs:
+      - review-verdict/ambiguity.json
+
+  # --- Human gate: spec-approval (spec §3.2 diagram, F.0 example instance) ---
+  # Named DAG point joining the four lenses. A human approves the spec only
+  # once all four lenses have returned verdicts.
+  - id: spec-approval
+    role: reviewer
+    type: review
+    depends_on:
+      - spec-review-intent-coverage
+      - spec-review-research-grounding
+      - spec-review-architecture
+      - spec-review-ambiguity
+    human_gate: spec-approval
+    outputs:
+      - approved-project-spec
+
+  # --- Task decomposition (spec §4.6, role: roles/F4-task-decomposer.md) ---
+  - id: decompose
+    role: task-decomposer
+    type: decomposition
+    depends_on: [spec-approval]
+    outputs:
+      - implementation-task-graph
+
+  # --- Child implementation mission (spec §3.1, F.0 example instance) ---
+  # No `role`: this stage is a control-plane mechanism (mission creation),
+  # not a role-contract task. Gated by the same human approval that
+  # released the spec — a mission is not spawned on an unapproved spec.
+  - id: create-implementation-mission
+    type: child-mission
+    depends_on: [decompose]
+    gated_by: spec-approval
+
+required_outputs:
+  - approved-project-spec
+  - implementation-task-graph
+
+terminal_condition: >
+  spec-approval human gate has passed AND create-implementation-mission is
+  DONE (child mission created and linked).
+
+child_missions:
+  - workflow: feature-development
+    gated_by: spec-approval
+    # The implementation-task-graph produced by `decompose` is already
+    # decomposed; the child mission's feature-development instance short-
+    # circuits its own spec-refresh/architecture-check/decompose stages
+    # (their conditions are already satisfied by this mission's outputs)
+    # and begins at implementation. See roles/F4-task-decomposer.md.

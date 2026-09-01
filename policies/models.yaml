@@ -1,0 +1,75 @@
+# policies/models.yaml
+#
+# What this is: the platform's capability-tier abstraction and the
+# harness profiles that bind those tiers to example models. The platform
+# speaks tiers, never vendor models — routing (policies/risk.yaml,
+# `agent route`) always resolves to frontier/strong/mid/cheap, and only
+# the active profile below turns a tier into an actual model choice for
+# the operator's harness (DESIGN.md §5, spec §7).
+#
+# Spec section: §7.1 (routing logic and what each tier is for), §7.3
+# (routing maturity — this file is what Phase-1 static routing points
+# at), §12.4 (artifact freshness).
+#
+# Owner (role, not a person): repo-maintainer. See `owner:` field below.
+#
+# Staleness trigger (spec §12.4): `as_of` older than 90 days ⇒ agents
+# must treat the profile mappings (not the tier descriptions) as a hint,
+# not truth — verify a profile's model names are still offered by the
+# harness before relying on them, and refresh `as_of` after checking.
+# Model catalogs rot faster than almost anything else in this repo.
+
+tiers: [frontier, strong, mid, cheap]
+
+profiles:
+  # Vendor-neutral capability descriptions only. This is what "tier"
+  # means platform-wide, independent of any harness (spec §7.1).
+  generic:
+    frontier: >
+      Reserved for ambiguity, architecture, difficult debugging,
+      security-sensitive reasoning, conflicting evidence, and
+      cross-system tradeoffs (spec §7.1). Most expensive tier; used for
+      R4 planning and R3 planning (policies/risk.yaml).
+    strong: >
+      Strong reasoning for planning/design work once the problem is
+      real but not maximally ambiguous, and for implementation on
+      security- or architecture-sensitive tasks. Used for R3 planning
+      (as `strong`) and R4 implementation (policies/risk.yaml).
+    mid: >
+      Solid general-purpose capability for normal, moderately-bounded
+      planning and implementation. Cheap models are appropriate once the
+      shape of the solution is already constrained (spec §7.1); mid is
+      the default once some but not all of that constraint exists. Used
+      for R2 planning/implementation and R3 bounded implementation
+      (policies/risk.yaml).
+    cheap: >
+      Appropriate when the shape of the solution is already constrained
+      by upstream design (spec §7.1). Used for R0/R1 planning and
+      implementation, and for R3+ implementation once strong planning
+      has bounded the work (policies/risk.yaml, spec §7.2's thesis that
+      strong planning + cheap bounded implementation beats a uniformly
+      expensive worker).
+
+  # Example mapping for the Cursor harness. Illustrative default the
+  # operator edits — Cursor's own model catalog is the source of truth.
+  # Cursor-available model families only (Claude Opus/Sonnet/Haiku,
+  # GPT-5 family, Gemini). No Fable/Mythos: those are Claude Code-only
+  # internal model names and are never valid here.
+  cursor:
+    frontier: Claude Opus or GPT-5 Pro, high-reasoning/extended-thinking mode
+    strong: Claude Sonnet or GPT-5, standard reasoning mode
+    mid: GPT-5 mini or Gemini 2.5 Flash
+    cheap: Claude Haiku or Gemini Flash-Lite
+
+  # Example mapping for the Claude Code harness. Illustrative default the
+  # operator edits.
+  claude-code:
+    frontier: Claude Fable where the account has access, else Claude Opus, extended thinking
+    strong: Claude Sonnet, standard reasoning
+    mid: Claude Sonnet, low reasoning effort
+    cheap: Claude Haiku
+
+active_profile: generic
+
+as_of: 2026-08-31
+owner: repo-maintainer

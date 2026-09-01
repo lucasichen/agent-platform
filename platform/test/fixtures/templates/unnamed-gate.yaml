@@ -1,0 +1,24 @@
+# Rejection-class fixture: well-formed on its own, but the paired mission
+# fixture (see compiler.test.ts) declares a human_gates entry ('approval')
+# that no stage.human_gate here matches.
+id: unnamed-gate
+version: 1
+description: Single stage with no human_gate at all.
+
+entry_conditions:
+  - "mission goal is a small, bounded change"
+
+required_inputs:
+  - "brief.md"
+
+stages:
+  - id: build
+    role: worker
+    type: implementation
+    depends_on: []
+    outputs: [candidate-diff]
+
+required_outputs:
+  - candidate-diff
+
+terminal_condition: "build stage is DONE"

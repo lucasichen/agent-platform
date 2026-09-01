@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform.local/schemas/cost.schema.json",
+  "title": "Cost",
+  "description": "Evidence bundle file .agent/runs/<TASK-ID>/cost.json (spec Appendix B, F.6 worker outputs). The spec names cost.json as a required evidence artifact and requires tracking verification cost per task (§9.5) but gives no literal field example; this shape generalizes the lifecycle-cost components enumerated in §7.2 (implementation + verification + reviews + retries + human correction) and is intentionally permissive beyond the required totals so a CLI implementation can add detail.",
+  "type": "object",
+  "properties": {
+    "task": {
+      "type": "string",
+      "description": "Task id this cost record belongs to."
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Attempt number this record covers, bounded by budget.attempts (spec §6.1, §6.3)."
+    },
+    "total_dollars": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Total spend for this attempt, counted against the task's budget.dollars (spec §6.1)."
+    },
+    "breakdown": {
+      "type": "object",
+      "description": "Spend by lifecycle phase, mirroring the §7.2 routing-objective components (implementation, verification, reviews, retries, human correction).",
+      "properties": {
+        "planning": { "type": "number", "minimum": 0 },
+        "implementation": { "type": "number", "minimum": 0 },
+        "verification": { "type": "number", "minimum": 0 },
+        "review": { "type": "number", "minimum": 0 },
+        "human_correction": { "type": "number", "minimum": 0 },
+        "other": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "model_calls": {
+      "type": "array",
+      "description": "Optional per-call detail for auditability.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "phase": { "type": "string" },
+          "tier": {
+            "type": "string",
+            "enum": ["frontier", "strong", "mid", "cheap"],
+            "description": "Capability tier resolved by the router (policies/models.yaml, spec §7, §7.3)."
+          },
+          "dollars": { "type": "number", "minimum": 0 },
+          "tokens": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["phase", "dollars"],
+        "additionalProperties": true
+      }
+    }
+  },
+  "required": ["task", "total_dollars"],
+  "additionalProperties": true
+}

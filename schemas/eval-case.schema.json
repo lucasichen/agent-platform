@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform.local/schemas/eval-case.schema.json",
+  "title": "Eval Case",
+  "description": "Replayable eval case under .agent/evals/<domain>/<ID>.yaml, turning an actual failure into a reusable regression case (spec §13.5, F.10). Normative example: spec §13.5 (ARCH-017). Kept permissive beyond the required fields: §13.5 layers a case as VISIBLE (unit/integration/acceptance/standards), INDEPENDENT/HIDDEN (extra scenarios, architecture checks, mutation tests, adversarial cases) and PRODUCTION (canary telemetry) — richer cases may carry more structure than the minimal example shown.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Eval case id, e.g. ARCH-017 (spec §13.5)."
+    },
+    "repo_snapshot": {
+      "type": "string",
+      "description": "Pinned repo commit/snapshot the case replays against (spec §13.5, §6.1: 'Evals pin repo_snapshot for the same reason')."
+    },
+    "task": {
+      "type": "string",
+      "description": "Task description the eval case replays (spec §13.5)."
+    },
+    "known_failure": {
+      "type": "string",
+      "description": "The actual failure this case was captured from (spec §13.5)."
+    },
+    "required": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Seams/behaviors that must be present for the case to pass (spec §13.5 example)."
+    },
+    "forbidden": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Behaviors that must not be present for the case to pass (spec §13.5 example)."
+    }
+  },
+  "required": ["id", "repo_snapshot", "task", "known_failure"],
+  "additionalProperties": true
+}

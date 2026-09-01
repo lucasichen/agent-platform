@@ -1,0 +1,44 @@
+# Minimal well-formed workflow template used by the compiler happy-path
+# test and as the base case the rejection-class fixtures perturb.
+id: happy-path
+version: 1
+description: Minimal research -> implement -> verify -> review workflow, one human gate.
+
+entry_conditions:
+  - "mission goal is a small, bounded change"
+
+required_inputs:
+  - "brief.md"
+
+stages:
+  - id: research
+    role: uncertainty-resolver
+    type: research
+    depends_on: []
+    outputs: [artifact://research/findings.md]
+
+  - id: build
+    role: worker
+    type: implementation
+    depends_on: [research]
+    outputs: [candidate-diff]
+
+  - id: verify
+    role: verifier
+    type: verification
+    depends_on: [build]
+    outputs: [verification-result]
+
+  - id: review
+    role: reviewer
+    type: review
+    depends_on: [verify]
+    human_gate: sign-off
+    outputs: [approved-change]
+
+required_outputs:
+  - candidate-diff
+  - verification-result
+  - approved-change
+
+terminal_condition: "review stage is DONE (sign-off human gate cleared)"

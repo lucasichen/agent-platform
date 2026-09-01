@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform.local/schemas/risk-policy.schema.json",
+  "title": "Risk Policy",
+  "description": "policies/risk.yaml — the R0-R4 risk table that is the Phase-1 router, full stop (spec §10.5, §7.3). Owner: repo maintainer role (with design-authority sign-off on tier/lens changes); staleness trigger: a merged incident or retrospective implicating a risk level's process re-triggers review of that level (spec §12.4, §13.2).",
+  "type": "object",
+  "properties": {
+    "levels": {
+      "type": "object",
+      "description": "One entry per risk level (spec §10.5 table).",
+      "properties": {
+        "R0": { "$ref": "#/$defs/level" },
+        "R1": { "$ref": "#/$defs/level" },
+        "R2": { "$ref": "#/$defs/level" },
+        "R3": { "$ref": "#/$defs/level" },
+        "R4": { "$ref": "#/$defs/level" }
+      },
+      "required": ["R0", "R1", "R2", "R3", "R4"],
+      "additionalProperties": false
+    },
+    "third_party_dependency_escalation": {
+      "type": "object",
+      "description": "Encodes spec §5.2's must-escalate trigger 'new third-party dependency': a worker introducing a new third-party dependency stops and escalates to design authority rather than deciding unilaterally, and the resulting task is treated at minimum_risk or above regardless of its original risk estimate.",
+      "properties": {
+        "trigger": { "type": "string" },
+        "minimum_risk": {
+          "type": "string",
+          "enum": ["R0", "R1", "R2", "R3", "R4"]
+        }
+      },
+      "required": ["trigger", "minimum_risk"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["levels"],
+  "additionalProperties": true,
+  "$defs": {
+    "level": {
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "What this risk level covers (spec §10.5 'Example' column, generalized)."
+        },
+        "example": {
+          "type": "string",
+          "description": "Example task shape, e.g. 'auth/API/schema/core behavior' (spec §10.5)."
+        },
+        "planning_tier": {
+          "type": "string",
+          "enum": ["cheap", "mid", "strong", "frontier"],
+          "description": "Required capability tier for planning/design work at this risk level (spec §10.5, §7.1)."
+        },
+        "implementation_tier": {
+          "type": "string",
+          "enum": ["cheap", "mid", "strong", "frontier"],
+          "description": "Required capability tier for implementation work at this risk level (spec §10.5, §7.1)."
+        },
+        "verification_depth": {
+          "type": "string",
+          "enum": ["deterministic", "smoke", "runtime", "isolated-runtime"],
+          "description": "Verification depth (spec §9.5 tiered depth: R0/R1 deterministic checks/smoke, R2 runtime verification, R3+ full isolated runtime environment)."
+        },
+        "required_review_lenses": {
+          "type": "array",
+          "description": "Mandatory review lenses for this risk level (spec §10.4, §10.5).",
+          "items": {
+            "type": "string",
+            "enum": ["spec", "quality", "architecture", "security"]
+          },
+          "uniqueItems": true
+        },
+        "human_approval": {
+          "description": "Whether human approval is required, or the named gate(s) that must clear (spec §10.5, §6.0 human_gates).",
+          "oneOf": [
+            { "type": "boolean" },
+            { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          ]
+        },
+        "staged_release": {
+          "type": "boolean",
+          "description": "Whether release must be staged/canaried for this risk level (spec §10.5, §13.6, §11)."
+        }
+      },
+      "required": [
+        "description",
+        "example",
+        "planning_tier",
+        "implementation_tier",
+        "verification_depth",
+        "required_review_lenses",
+        "human_approval",
+        "staged_release"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

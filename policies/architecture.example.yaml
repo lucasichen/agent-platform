@@ -1,0 +1,116 @@
+# policies/architecture.example.yaml
+#
+# What this is: a documented, reproduced example of a target repo's
+# .agent/policies/architecture.yaml — the Layer 1 deterministic
+# architecture-enforcement rule file (spec §10.3). This file is an
+# EXAMPLE for a hypothetical "portal" repo with an account-deletion
+# feature (the same worked example used throughout the spec's §5/§6/§10);
+# `agent init` does not copy it as-is into a target repo the way it
+# copies risk.yaml/models.yaml/escalation.yaml, because architecture
+# invariants are inherently repo-specific. Copy this file's structure and
+# replace its rules with the target repo's real invariants.
+#
+# Spec section: §10.3 (Architecture review, Layer 1 — deterministic
+# enforcement).
+#
+# Owner (role, not a person): design authority (the role that approves
+# ownership-line and seam changes, spec §10.3 "CI fails when a change
+# crosses an ownership line without a manifest update approved by design
+# authority").
+#
+# Staleness trigger (spec §12.4): this file is code — reviewed,
+# versioned, and evolved like code (spec §10.3). Concretely: a rule whose
+# `from`/`to`/`paths` glob no longer matches any file after a refactor is
+# dead and must be removed or repointed; a Layer 2 (LLM) architecture
+# review finding that could have been a mechanical rule is a required
+# retrospective output (spec §13.2) and must add a rule here — see "The
+# shrinking rule" below.
+#
+# --- Layer 1 vs Layer 2 (spec §10.3) --------------------------------
+#
+# The architecture gate has two layers:
+#
+#   candidate -> Layer 1 (this file, deterministic) -> fail: reject,
+#   no LLM spend -> Layer 2 (LLM architecture review, residual judgment
+#   only, e.g. new abstractions, duplicate concepts, design intent vs
+#   ADR, API boundary taste)
+#
+# "Every invariant that can be a machine check must be a machine check."
+# An LLM judging LLM output shares blind spots with the worker; the LLM
+# layer exists only for what cannot be mechanized. A functionally
+# correct implementation can still fail this gate.
+#
+# These rules run twice: once as fast, cheap worker-local verification
+# (quick feedback, cheap repair) and once as the independent verifier's
+# authoritative check, which the worker cannot skip (spec §10.3).
+#
+# --- The shrinking rule (spec §10.3) --------------------------------
+#
+#   LLM reviewer catches a mechanizable violation
+#     -> retrospective (spec §13.2)
+#     -> new rule added below
+#     -> Layer 1 grows, Layer 2 shrinks
+#
+# A Layer 2 gate that stays the same size is not learning. Every rule
+# added here is expected to shrink what the LLM architecture reviewer
+# has to judge from then on.
+#
+# --- The four invariant rule types used below -----------------------
+#
+#   forbidden-dependency   import/dependency-boundary rule: code under
+#                          `from` may never import/call into `to`.
+#   required-call          two shapes, both "a canonical seam must be
+#                          used":
+#                            (a) when_touching + require_any/forbid —
+#                                touching a path requires calling one of
+#                                a set of seams, and forbids calling
+#                                specific bypass APIs instead.
+#                            (b) when_calling + require — calling a given
+#                                seam requires that it, in turn, calls
+#                                through to another required seam.
+#   ownership              module ownership manifest: only the named
+#                          owner may write these paths without a design-
+#                          authority-approved manifest update.
+#
+# Tooling by ecosystem that can execute rules like these (spec §10.3):
+# JVM -> ArchUnit; JS/TS -> eslint-plugin-boundaries, dependency-cruiser;
+# Python -> import-linter; any -> grep-grade forbidden-API rules, custom
+# AST checks.
+
+invariants:
+
+  - id: ARCH-SESSION-PERSISTENCE
+    rule: forbidden-dependency
+    from: "**/controllers/**"
+    to: "**/persistence/session/**"
+    message: >
+      Controllers cannot mutate session persistence directly.
+      Use SessionService.
+
+  - id: ARCH-DELETION-SEAM
+    rule: required-call
+    when_touching: "**/account/deletion/**"
+    require_any:
+      - AccountService.delete
+    forbid:
+      - AccountRepository.updateStatus
+    message: >
+      Deletion state changes only through AccountService.delete().
+
+  - id: ARCH-REVOKE-SEAM
+    rule: required-call
+    when_calling: AccountService.delete
+    require:
+      - SessionService.revokeAll
+    message: >
+      Deletion must revoke sessions through the canonical seam.
+
+  - id: ARCH-ACCOUNT-OWNERSHIP
+    rule: ownership
+    owner: account-service
+    paths:
+      - "services/account/**"
+      - "db/migrations/account_*"
+    message: >
+      AccountService owns account lifecycle.
+      Cross-module writes require a design-authority decision.

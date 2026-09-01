@@ -1,0 +1,63 @@
+# .agent/repo.yaml
+#
+# Repository operating contract (spec Appendix A). This file makes the
+# repository self-describing to agents: how to set it up, what services it
+# runs, what it depends on, and how to verify a change deterministically.
+#
+# owner: repo maintainer role (spec §12.4 — "repo.yaml -> repo maintainer role")
+# staleness trigger: every command below is executed in CI (or by `agent
+#   validate --run-checks` / a verifier task); a command that no longer
+#   succeeds fails the build. Agents treat a repo.yaml that has not run
+#   green recently as a hint, not truth (spec §12.4 trust decay rule) —
+#   re-verify the failing command before relying on it.
+#
+# Fill in every {{placeholder}} (quoted so this template stays parseable
+# YAML). Delete sections that do not apply to this repository (e.g.
+# `dependencies` if there are none) rather than leaving them empty — an
+# empty section reads as "verified: nothing here", not "not yet filled in".
+
+name: "{{repo-name}}"
+
+# One or more tags describing the stack, used by role contracts and workers
+# to pick the right defaults (e.g. which verify skill applies). Free text,
+# but keep it short and consistent across repos in the fleet.
+# Examples from the spec: backbone, express, java-api, android, ios, sdk.
+type:
+  - "{{stack-tag}}"
+
+# Commands required to get a clean checkout into a runnable state.
+# Run in order, from repo root, on a fresh clone.
+setup:
+  - "{{e.g. npm install}}"
+
+# Long-running processes a verifier needs to bring up before it can exercise
+# real behavior (spec §9). Each service needs a start command and a health
+# check the verifier can poll before proceeding.
+services:
+  "{{service-name}}":
+    command: "{{e.g. npm run api}}"
+    health: "{{e.g. http://localhost:$API_PORT/health}}"
+
+# External systems the app needs at runtime that are not "this repo's code".
+# Prefer ephemeral/containerized instances over shared infrastructure so
+# verification is reproducible and isolated (spec §9.2, §16.3).
+dependencies:
+  "{{dependency-name}}":
+    container: true
+
+# Deterministic verification instructions (spec §9). See
+# .agent/verification/README.md for the full contract each entry here must
+# satisfy — environment setup, port allocation, fixtures, authentication,
+# runtime interaction, logs, cleanup, and evidence capture.
+verification:
+  unit:
+    command: "{{e.g. npm test}}"
+
+  lint:
+    command: "{{e.g. npm run lint}}"
+
+  # A named runtime/browser/API verification skill or script. Reference
+  # scripts under .agent/verification/ (organized by app type — web/, api/,
+  # android/, ios/) rather than inlining logic here.
+  "{{verification-name}}":
+    skill: "{{e.g. verify-portal}}"

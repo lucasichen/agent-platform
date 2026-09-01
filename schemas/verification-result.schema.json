@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform.local/schemas/verification-result.schema.json",
+  "title": "Verification Result",
+  "description": "Evidence bundle file .agent/runs/<TASK-ID>/verification/result.json, produced by the independent verifier (spec F.7, Appendix B). A PASS without attached evidence is treated as FAIL by gates (F.7 On underdelivery).",
+  "type": "object",
+  "properties": {
+    "task": {
+      "type": "string",
+      "description": "Task id this verification run belongs to."
+    },
+    "commit": {
+      "type": "string",
+      "description": "Commit hash of the verified candidate."
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "description": "One deterministic PASS/FAIL per line of the task's verification: block (spec §6.1, F.7 Done means).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["PASS", "FAIL", "SKIPPED"],
+            "description": "Per §9.5 every verifier failure is additionally classified as PRODUCT FAILURE, ENVIRONMENT FAILURE, or FLAKE before entering the learning loop; that classification is recorded in the retrospective, not here."
+          },
+          "evidence": {
+            "type": "string",
+            "description": "Path (relative to the run directory) to the evidence artifact for this check, e.g. api.json or logs/db.log."
+          }
+        },
+        "required": ["name", "status", "evidence"],
+        "additionalProperties": false
+      }
+    },
+    "environment": {
+      "type": "string",
+      "description": "Description of the isolated verification environment, e.g. ephemeral-postgres-14 (spec F.7)."
+    },
+    "reproducible_with": {
+      "type": "string",
+      "description": "Path to the reproduction command/script, e.g. .agent/verification/api/run.sh (spec F.7)."
+    }
+  },
+  "required": ["task", "commit", "checks", "environment", "reproducible_with"],
+  "additionalProperties": false
+}

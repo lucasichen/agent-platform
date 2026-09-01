@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform.local/schemas/workflow-template.schema.json",
+  "title": "Workflow Template",
+  "description": "Versioned, declarative composition of role contracts stored under registry/workflows/*.yaml (spec §3.2, Appendix F, DESIGN.md §3). A workflow template performs composition only; it never encodes planning or architecture decisions (spec §3.2 conditional stages, F.0 failure modes).",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Workflow template id, e.g. feature-development (spec §3.2)."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Template version (spec §3.2). Missions and tasks pin this version."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable purpose of the workflow (spec §3.2 registry table)."
+    },
+    "entry_conditions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Conditions that must hold before this workflow may be instantiated (spec §3.2)."
+    },
+    "required_inputs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Artifact names/URIs the mission must supply (spec §3.2)."
+    },
+    "stages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/stage" },
+      "minItems": 1,
+      "description": "Role/stage DAG (spec §3.2, F.0). The compiler validates every stage maps to a known role, dependencies are explicit and acyclic, all mission outputs are covered, and every human gate has a named DAG point (DESIGN.md §3)."
+    },
+    "required_outputs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Output artifact names the workflow's stages must jointly produce (spec §3.2)."
+    },
+    "terminal_condition": {
+      "description": "Mechanical condition marking the workflow complete (spec §3.2). Shape is workflow-specific: a short description string, or a structured predicate.",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "object", "additionalProperties": true }
+      ]
+    },
+    "child_missions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "workflow": { "type": "string", "description": "Workflow template id the child mission runs." },
+          "gated_by": { "type": "string", "description": "Named human gate that must approve child-mission creation (spec §6.0: creating a child mission is a human gate by default)." }
+        },
+        "required": ["workflow"],
+        "additionalProperties": false
+      },
+      "description": "Child workflows this template may spawn (spec §3.2, §6.0)."
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "description",
+    "entry_conditions",
+    "required_inputs",
+    "stages",
+    "required_outputs",
+    "terminal_condition"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "stage": {
+      "type": "object",
+      "description": "One DAG node (spec F.0 workflow_instance example). role is required for ordinary stages; a type: child-mission stage may omit role and instead carry gated_by directly, per the F.0 create-implementation-mission example.",
+      "properties": {
+        "id": { "type": "string" },
+        "role": { "type": "string", "description": "Role contract id (Appendix F)." },
+        "type": {
+          "type": "string",
+          "enum": [
+            "research",
+            "prototype",
+            "domain",
+            "architecture",
+            "specification",
+            "review",
+            "decomposition",
+            "implementation",
+            "verification",
+            "retrospective",
+            "child-mission"
+          ]
+        },
+        "depends_on": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ids of stages this stage depends on (spec F.0)."
+        },
+        "outputs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Artifact names/URIs this stage produces (spec F.0)."
+        },
+        "human_gate": {
+          "type": "string",
+          "description": "Named human approval gate at this DAG point (spec §3.2, F.0)."
+        },
+        "gated_by": {
+          "type": "string",
+          "description": "Named gate that must clear before a child-mission stage executes (spec F.0 create-implementation-mission example)."
+        },
+        "condition": {
+          "type": "object",
+          "description": "Every conditional stage names either a mechanical predicate the compiler evaluates from policy, or an owning role that makes the judgment call (spec §3.2 Conditional stages).",
+          "oneOf": [
+            {
+              "properties": { "predicate": { "type": "string" } },
+              "required": ["predicate"]
+            },
+            {
+              "properties": { "owner": { "type": "string" } },
+              "required": ["owner"]
+            }
+          ]
+        }
+      },
+      "required": ["id", "type"],
+      "additionalProperties": false
+    }
+  }
+}

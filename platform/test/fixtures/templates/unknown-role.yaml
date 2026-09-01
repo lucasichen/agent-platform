@@ -1,0 +1,29 @@
+# Rejection-class fixture: a stage names a role not in the platform's
+# known role set (compiler.ts KNOWN_ROLES / roles/F*.md).
+id: unknown-role
+version: 1
+description: Single stage bound to a role that does not exist.
+
+entry_conditions:
+  - "mission goal is a small, bounded change"
+
+required_inputs:
+  - "brief.md"
+
+stages:
+  - id: research
+    role: uncertainty-resolver
+    type: research
+    depends_on: []
+    outputs: [artifact://research/findings.md]
+
+  - id: mystery
+    role: astrologer
+    type: implementation
+    depends_on: [research]
+    outputs: [candidate-diff]
+
+required_outputs:
+  - candidate-diff
+
+terminal_condition: "mystery stage is DONE"

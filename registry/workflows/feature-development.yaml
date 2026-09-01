@@ -1,0 +1,123 @@
+# Workflow template: feature-development
+#
+# Purpose (spec §3.2): implement a bounded product change. Composition
+# only — see roles/F0-workflow-compiler.md. Shape conforms to
+# docs/DESIGN.md §3 "Workflow template". Every conditional stage below
+# carries either a mechanical `predicate` or an owning `role` (spec §3.2).
+
+id: feature-development
+version: 1
+description: >
+  Implement a bounded product change: refresh the spec if needed, resolve
+  or confirm architecture, decompose into implementation tasks, execute,
+  verify, review, and merge.
+
+entry_conditions:
+  - "mission.goal describes a bounded, already-scoped product change"
+  - "a project-spec artifact exists (own mission, or inherited from a parent project-definition mission)"
+
+required_inputs:
+  - "mission goal and constraints (mission.yaml)"
+  - "project-spec (existing or inherited from parent mission)"
+  - "architecture/adr and canonical-pattern map for the affected areas"
+  - "risk policy (policies/risk.yaml)"
+
+stages:
+
+  # --- Spec refresh if needed (spec §3.2 registry table, role: roles/F2-specifier.md) ---
+  # Whether the existing spec still accurately describes the requested
+  # change is not mechanically decidable from the mission alone — it
+  # requires reading the spec against the requested change. Per spec §3.2
+  # ("judgment otherwise → escalated to the owning role... spec authority
+  # for spec refresh"), that judgment belongs to the specifier role, not
+  # the compiler.
+  - id: spec-refresh
+    role: specifier
+    type: specification
+    depends_on: []
+    condition:
+      owner: specifier
+      # Specifier reads mission.goal against the current project-spec and
+      # decides whether a refresh is required; if not, it confirms the
+      # existing spec as current and passes it through unchanged.
+    outputs:
+      - project-spec
+
+  # --- Architecture check (spec §3.2 registry table, role: roles/F3-architect.md) ---
+  # Mechanical predicate, evaluated by the compiler from the task's risk
+  # and its design block (spec §3.2: "mechanical predicate where possible
+  # (risk level, files touched, decision_refs present)").
+  - id: architecture-check
+    role: architect
+    type: architecture
+    depends_on: [spec-refresh]
+    condition:
+      predicate: "task.risk >= R3 OR payload.design.decision_refs is empty or absent"
+      # When false, this stage is skipped: the mission's existing
+      # decision_refs are treated as sufficient design authority and
+      # decompose proceeds directly against them.
+    outputs:
+      - architecture-design
+
+  # --- Task decomposition (spec §4.6, role: roles/F4-task-decomposer.md) ---
+  - id: decompose
+    role: task-decomposer
+    type: decomposition
+    depends_on: [architecture-check]
+    outputs:
+      - implementation-task-graph
+
+  # --- Implementation (spec §8, role: roles/F6-worker.md) ---
+  # Represents the fan-out of implementation tasks produced by `decompose`;
+  # each task in implementation-task-graph is executed by a worker
+  # instance per the risk-resolved tier (policies/risk.yaml, spec §7.1).
+  - id: implement
+    role: worker
+    type: implementation
+    depends_on: [decompose]
+    outputs:
+      - candidate-diff
+
+  # --- Verification (spec §9, role: roles/F7-verifier.md) ---
+  - id: verify
+    role: verifier
+    type: verification
+    depends_on: [implement]
+    outputs:
+      - verification-result
+
+  # --- Review (spec §10, role: roles/F8-reviewer.md) ---
+  # Which lenses (spec/quality/architecture, +security for sensitive
+  # tasks) are mandatory is a mechanical lookup against the task's risk
+  # level in policies/risk.yaml (spec §10.4-§10.5) — not a judgment call
+  # left to the reviewer.
+  - id: review
+    role: reviewer
+    type: review
+    depends_on: [verify]
+    condition:
+      predicate: "required review lenses = policies/risk.yaml required_review_lenses[task.risk]"
+    outputs:
+      - review-verdict/spec.json
+      - review-verdict/quality.json
+      - review-verdict/architecture.json
+
+  # --- Merge (spec §11, role: roles/F9-merge-refinery.md) ---
+  # Typed `implementation`: merge is the MERGE_READY→MERGED lifecycle
+  # transition of the implementation task (docs/DESIGN.md §3 Lifecycle),
+  # not a distinct task-envelope type — the task-type enum has no separate
+  # "merge" category.
+  - id: merge
+    role: merge-refinery
+    type: implementation
+    depends_on: [review]
+    outputs:
+      - merged-commit
+
+required_outputs:
+  - merged-commit
+
+terminal_condition: >
+  merge stage is DONE (implementation task reaches MERGED per
+  docs/DESIGN.md §3 Lifecycle; DEPLOYED/PRODUCTION_VERIFIED never block
+  dependents).

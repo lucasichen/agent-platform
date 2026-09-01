@@ -1,0 +1,43 @@
+# .agent/features/feature-map.yaml
+#
+# owner: mission planner role (spec §12.4 — "feature maps -> mission planner")
+# staleness trigger: entries reference routes/screens; verifiers check
+#   each reference against the running app (spec §12.4, verbatim:
+#   "feature maps reference routes/screens -> checked against the running
+#   app by verifiers"). A reference a verifier cannot resolve against the
+#   running app marks the entry stale — flag it for the mission planner
+#   role to refresh rather than leaving it silently wrong.
+#
+# Purpose: a durable map from product-level features to the routes,
+# screens, and APIs that implement them, and their current completion
+# state. This is what lets a dashboard roll task status up to feature
+# status (spec §14.5 example dashboard shows "ACCOUNT MANAGEMENT 87%"
+# aggregated across Backend/Portal/Android/iOS/Security/Integration).
+#
+# Update this file when a mission's task-decomposition stage creates or
+# completes work against a feature, and whenever routes/screens are
+# added, renamed, or removed.
+
+features: []
+
+# Example entry — replace/remove once real features exist:
+#
+# features:
+#   - id: account-management
+#     description: Account settings, profile, and account lifecycle.
+#     surfaces:
+#       backend:
+#         routes:
+#           - DELETE /api/accounts/{id}
+#       portal:
+#         screens:
+#           - /settings/account
+#       android:
+#         screens:
+#           - SettingsAccountFragment
+#       ios:
+#         screens:
+#           - AccountSettingsViewController
+#     status: in-progress   # planned | in-progress | complete
+#     owning_missions:
+#       - ACCOUNT-MANAGEMENT-V1

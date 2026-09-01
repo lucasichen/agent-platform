@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform.local/schemas/workflow-instance.schema.json",
+  "title": "Workflow Instance",
+  "description": "Compiled binding of a mission to a workflow template, with stages resolved and inputs pinned (spec F.0, Appendix B; DESIGN.md §3). Written to .agent/missions/<MISSION-ID>/workflow-instance.yaml. Normative example: spec F.0 (the workflow_instance for PROJECT-CODING-GRADER) — validate the mapping under its 'workflow_instance:' key against this schema, since that key is the example's presentational wrapper, not a schema field (DESIGN.md §3 lists mission/template/version/stages as the literal top-level fields).",
+  "type": "object",
+  "properties": {
+    "mission": {
+      "type": "string",
+      "description": "Mission id this instance was compiled for (spec F.0)."
+    },
+    "template": {
+      "type": "string",
+      "description": "Workflow template id (spec F.0)."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Pinned workflow template version (spec F.0)."
+    },
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Resolved stages with pinned inputs (DESIGN.md §3). Every stage maps to a known role, dependencies are explicit and acyclic, and every human gate names a DAG point (F.0 Done means).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "role": { "type": "string", "description": "Role contract id; may be absent on a type: child-mission stage (spec F.0 create-implementation-mission example)." },
+          "type": {
+            "type": "string",
+            "enum": [
+              "research",
+              "prototype",
+              "domain",
+              "architecture",
+              "specification",
+              "review",
+              "decomposition",
+              "implementation",
+              "verification",
+              "retrospective",
+              "child-mission"
+            ]
+          },
+          "depends_on": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "inputs": {
+            "type": "array",
+            "description": "Pinned task inputs for this stage (spec §6.1 Pinning).",
+            "items": {
+              "oneOf": [
+                { "type": "string" },
+                {
+                  "type": "object",
+                  "properties": {
+                    "uri": { "type": "string" },
+                    "version": { "type": "integer", "minimum": 1 },
+                    "hash": { "type": "string" }
+                  },
+                  "required": ["uri"],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "outputs": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "human_gate": { "type": "string" },
+          "gated_by": { "type": "string" }
+        },
+        "required": ["id"],
+        "description": "type is optional at the instance level: the F.0 example resolves most stages' type implicitly from role and states it explicitly only where it is not otherwise inferable (research, child-mission) or ambiguous.",
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["mission", "template", "version", "stages"],
+  "additionalProperties": false
+}

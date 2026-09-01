@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform.local/schemas/result.schema.json",
+  "title": "Result",
+  "description": "Four-gate evidence bundle summary .agent/runs/<TASK-ID>/result.json (spec Appendix B, F.9). The Merge Refinery requires a complete four-gate result before a candidate may reach MERGE_READY (spec F.9). Normative example: spec Appendix B (ACCOUNT-12).",
+  "type": "object",
+  "properties": {
+    "task": { "type": "string", "description": "Task id (Appendix B)." },
+    "commit": { "type": "string", "description": "Commit hash of the candidate (Appendix B)." },
+    "functional": { "$ref": "#/$defs/gateValue" },
+    "specification": { "$ref": "#/$defs/gateValue" },
+    "architecture": { "$ref": "#/$defs/gateValue" },
+    "evolutionary": { "$ref": "#/$defs/gateValue" },
+    "verifier": {
+      "type": "string",
+      "description": "Verifier binding id that produced the functional gate, e.g. api-verifier-03 (Appendix B)."
+    }
+  },
+  "required": ["task", "commit", "functional", "specification", "architecture", "evolutionary", "verifier"],
+  "additionalProperties": false,
+  "$defs": {
+    "gateValue": {
+      "type": "string",
+      "enum": ["PASS", "FAIL", "SKIPPED"],
+      "description": "Gate outcome (DESIGN.md §3, spec §10 four gates: Functional, Specification, Architectural, Evolutionary)."
+    }
+  }
+}

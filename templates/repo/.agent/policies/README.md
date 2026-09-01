@@ -40,3 +40,30 @@ Local edits are expected and normal — `models.yaml`'s harness profiles in
 particular are "illustrative defaults the operator edits" (spec DESIGN.md
 §5) since model catalogs rot. Re-run `agent validate` after editing any
 policy file.
+
+## architecture.yaml (spec §10.3, Layer 1)
+
+Unlike the other three files, `architecture.yaml` is **not** installed by
+`agent init` — architecture invariants are inherently repo-specific, so
+there is nothing generic to copy. `policies/architecture.example.yaml` in
+the `agent-platform` package is a worked, heavily-commented example (the
+same account-deletion scenario used throughout the spec); copy its
+structure here and replace the rules with this repo's real invariants.
+Its absence is not an error: `agent arch check` treats a missing
+`architecture.yaml` as a clean pass.
+
+Once authored, `agent arch check [--diff <ref>] [--repo <path>] [--json]`
+mechanically enforces the four invariant rule types the example file
+documents (forbidden-dependency, required-call, ownership,
+duplicate-domain-concept as a warn-only heuristic) — "grep-grade"
+per spec §10.3, not a full AST/type-checker. `--diff <ref>` scopes the
+check to files changed vs. `<ref>` (`git diff --name-only`); omitted, it
+scans the whole tree. `agent task gate --gate review --result pass` on an
+implementation task runs this check automatically (always whole-tree —
+the task ledger does not record a base ref to diff against) and refuses
+the gate on any block-level violation, with the same posture as
+incomplete evidence; warn-level findings never block. This is Layer 1 of
+the two-layer architecture gate — the point of running it mechanically
+first is that "every invariant that can be a machine check must be a
+machine check," so the LLM architecture reviewer (Layer 2, role F.8)
+spends judgment only on what Layer 1 cannot mechanize.

@@ -21,6 +21,8 @@ import type { BindingsPolicy, Harness, ResolvedRoleBindings } from "./bindings";
 import { resolveRoleBindings, bindingsSkillPathProblems } from "./bindings";
 import { installSkills } from "./skills";
 import { ensureWorktree } from "./worktree";
+import { runArchCheck, formatArchViolation, archCheckProblemsForGate, type ArchCheckResult } from "./archcheck";
+import { createEvalFromRetro, listEvalCases } from "./evals";
 
 const program = new Command();
 program
@@ -486,11 +488,19 @@ taskCmd
         throw new Error(`--result must be 'pass' or 'fail', got '${opts.result}'`);
       }
       const actor = actorFor(repo, id);
+      // Layer 1 architecture check (spec §10.3) is additionally enforced on
+      // `--gate review --result pass` for implementation tasks, with the
+      // same posture as evidence incompleteness ("PASS without evidence is
+      // FAIL"): a violation refuses the gate rather than failing it silently.
+      // Always whole-tree (see archcheck.ts's archCheckProblemsForGate doc
+      // comment for why); `agent arch check --diff <ref>` is the fast,
+      // cheap, worker-local check during the task itself.
       const task = ledger.gateTask(
         repo,
         id,
         { gate: opts.gate, result: opts.result, actor, evidencePath: opts.evidence },
-        checkEvidence
+        checkEvidence,
+        archCheckProblemsForGate
       );
       console.log(`${task.id} -> ${task.status}`);
       printWorktreeHint(task);
@@ -600,6 +610,43 @@ program
     })
   );
 
+// -------------------------------------------------------------- architecture
+
+function printArchCheckText(result: ArchCheckResult): void {
+  console.log(
+    `arch check  mode=${result.mode}${result.diffRef ? `(${result.diffRef})` : ""}  policy=${result.policyFile}${result.policyFound ? "" : " (absent)"}`
+  );
+  console.log(`  invariants evaluated: ${result.invariantsEvaluated}  files scanned: ${result.filesScanned}`);
+  for (const n of result.notes) console.log(`  note: ${n}`);
+  for (const v of result.violations) console.log(`FAIL  ${formatArchViolation(v)}`);
+  for (const w of result.warnings) console.log(`WARN  ${formatArchViolation(w)}`);
+  if (result.violations.length === 0) {
+    console.log(result.policyFound ? "No Layer-1 architecture violations." : "Clean pass (no policy file).");
+  }
+}
+
+const archCmd = program.command("arch").description("architecture invariant commands (spec §10.3, Layer 1)");
+
+archCmd
+  .command("check")
+  .description(
+    "deterministic Layer-1 architecture check against .agent/policies/architecture.yaml; absent policy = clean pass"
+  )
+  .option("--diff <ref>", "check only files changed vs <ref> (git diff --name-only <ref>); default is a whole-tree scan")
+  .option("--json", "machine-readable output")
+  .action(
+    guarded((opts: { diff?: string; json?: boolean }) => {
+      const repo = getRepo();
+      const result = runArchCheck(repo, { diff: opts.diff });
+      if (opts.json) {
+        printJson(result);
+      } else {
+        printArchCheckText(result);
+      }
+      if (result.violations.length > 0) process.exitCode = 1;
+    })
+  );
+
 // ---------------------------------------------------------------- evidence
 
 const evidenceCmd = program.command("evidence").description("evidence bundle commands (spec Appendix B, F.7)");
@@ -680,9 +727,11 @@ retroCmd
   .argument("<task-id>")
   .requiredOption("--trigger <trigger>", [...RETRO_TRIGGERS].join("|"))
   .option("--cause <cause>", [...RETRO_CAUSES].join("|"), "CODEBASE")
+  .option("--eval", "also scaffold a replayable eval case from this retrospective (chains `agent eval create`, spec F.10)", false)
+  .option("--eval-category <category>", "category for --eval (default: --cause, lowercased)")
   .description("scaffold retrospective.json (spec F.10: proposals only, status is always 'proposed')")
   .action(
-    guarded((taskId: string, opts: { trigger: string; cause: string }) => {
+    guarded((taskId: string, opts: { trigger: string; cause: string; eval?: boolean; evalCategory?: string }) => {
       const repo = getRepo();
       ledger.readTask(repo, taskId); // ensures the task exists
       if (!RETRO_TRIGGERS.has(opts.trigger)) {
@@ -691,7 +740,7 @@ retroCmd
       if (!RETRO_CAUSES.has(opts.cause)) {
         throw new Error(`--cause must be one of: ${[...RETRO_CAUSES].join(", ")}`);
       }
-      const retro = {
+      const retro: Record<string, unknown> = {
         task: taskId,
         trigger: opts.trigger,
         cause: opts.cause,
@@ -707,6 +756,55 @@ retroCmd
       ensureDir(P.runDir(repo, taskId));
       writeJsonAtomic(P.retrospectiveFile(repo, taskId), retro);
       console.log(`Wrote ${P.retrospectiveFile(repo, taskId)}`);
+
+      if (opts.eval) {
+        const result = createEvalFromRetro(repo, taskId, { category: opts.evalCategory });
+        retro.eval_case = result.relFile;
+        validateOrThrow("retrospective", retro, P.retrospectiveFile(repo, taskId));
+        writeJsonAtomic(P.retrospectiveFile(repo, taskId), retro);
+        console.log(`Wrote ${result.file}`);
+        if (result.warning) console.log(`  warning: ${result.warning}`);
+      }
+    })
+  );
+
+// -------------------------------------------------------------------- eval
+
+const evalCmd = program.command("eval").description("replayable eval case commands (spec §13.5, F.10)");
+
+evalCmd
+  .command("create")
+  .requiredOption("--from-retro <task-id>", "task id whose .agent/runs/<task-id>/retrospective.json to scaffold an eval case from")
+  .option("--category <category>", "eval category / .agent/evals/<category>/ subdirectory (default: the retrospective's cause, lowercased)")
+  .description("scaffold a schema-conformant .agent/evals/<category>/<ID>.yaml from a task retrospective")
+  .action(
+    guarded((opts: { fromRetro: string; category?: string }) => {
+      const repo = getRepo();
+      const result = createEvalFromRetro(repo, opts.fromRetro, { category: opts.category });
+      console.log(`Wrote ${result.file}`);
+      if (result.warning) console.log(`  warning: ${result.warning}`);
+    })
+  );
+
+evalCmd
+  .command("list")
+  .description("list eval cases under .agent/evals/")
+  .option("--json", "machine-readable output")
+  .action(
+    guarded((opts: { json?: boolean }) => {
+      const repo = getRepo();
+      const items = listEvalCases(repo);
+      if (opts.json) {
+        printJson(items);
+        return;
+      }
+      if (items.length === 0) {
+        console.log("No eval cases.");
+        return;
+      }
+      for (const i of items) {
+        console.log(`${i.id}  [${i.category}]  snapshot=${i.repo_snapshot.slice(0, 12)}  ${i.task.trim().slice(0, 60)}`);
+      }
     })
   );
 

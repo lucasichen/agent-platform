@@ -99,6 +99,28 @@ export function memoryIndexFile(repo: string): string {
   return path.join(memoryDir(repo), "index.md");
 }
 
+// -------------------------------------------------------------- architecture
+
+/** .agent/policies/architecture.yaml (spec §10.3 Layer 1). Repo-specific; not installed by `agent init` (see policies/architecture.example.yaml header) — its absence is a clean pass, not an error. */
+export function architecturePolicyFile(repo: string): string {
+  return path.join(policiesDirIn(repo), "architecture.yaml");
+}
+
+// -------------------------------------------------------------------- evals
+
+/** .agent/evals/ (spec §13.5, F.10). */
+export function evalsDir(repo: string): string {
+  return path.join(agentDir(repo), "evals");
+}
+
+export function evalCategoryDir(repo: string, category: string): string {
+  return path.join(evalsDir(repo), category);
+}
+
+export function evalCaseFile(repo: string, category: string, id: string): string {
+  return path.join(evalCategoryDir(repo, category), `${id}.yaml`);
+}
+
 export function memoryTopicFile(repo: string, area: string): string {
   return path.join(memoryDir(repo), `${area}.md`);
 }

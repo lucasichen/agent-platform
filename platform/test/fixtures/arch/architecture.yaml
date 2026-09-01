@@ -1,0 +1,48 @@
+# test fixture: mirrors policies/architecture.example.yaml (spec §10.3),
+# plus one duplicate-domain-concept warn rule to exercise the warn-level,
+# never-exit-1 path.
+
+invariants:
+
+  - id: ARCH-SESSION-PERSISTENCE
+    rule: forbidden-dependency
+    from: "**/controllers/**"
+    to: "**/persistence/session/**"
+    message: >
+      Controllers cannot mutate session persistence directly.
+      Use SessionService.
+
+  - id: ARCH-DELETION-SEAM
+    rule: required-call
+    when_touching: "**/account/deletion/**"
+    require_any:
+      - AccountService.delete
+    forbid:
+      - AccountRepository.updateStatus
+    message: >
+      Deletion state changes only through AccountService.delete().
+
+  - id: ARCH-REVOKE-SEAM
+    rule: required-call
+    when_calling: AccountService.delete
+    require:
+      - SessionService.revokeAll
+    message: >
+      Deletion must revoke sessions through the canonical seam.
+
+  - id: ARCH-ACCOUNT-OWNERSHIP
+    rule: ownership
+    owner: account-service
+    paths:
+      - "services/account/**"
+      - "db/migrations/account_*"
+    message: >
+      AccountService owns account lifecycle.
+      Cross-module writes require a design-authority decision.
+
+  - id: ARCH-DUP-WIDGET
+    rule: duplicate-domain-concept
+    pattern: "class\\s+\\w*Widget\\w*Manager"
+    message: >
+      Possible duplicate of the canonical Widget seam — warn only,
+      route to Layer 2 (spec §10.3).

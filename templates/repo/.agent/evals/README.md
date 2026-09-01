@@ -85,3 +85,29 @@ A task retrospective (`.agent/runs/<TASK-ID>/retrospective.json`,
 failure mode produces a `candidate_intervention` proposing a new eval
 case here. Per the retrospective schema, this is **never auto-applied**
 (spec Appendix B) — the learning-evaluator role reviews and lands it.
+
+## CLI commands
+
+```
+agent eval create --from-retro <task-id> [--category <category>]
+  # reads .agent/runs/<task-id>/retrospective.json and scaffolds a
+  # schema-conformant .agent/evals/<category>/<ID>.yaml. --category
+  # defaults to the retrospective's `cause`, lowercased (its own
+  # ARCHITECTURE -> architecture is exactly this directory's canonical
+  # ARCH-017 example); repos are free to use any lowercase-kebab
+  # category, per "create only the categories this repository needs"
+  # above. repo_snapshot is pinned via `git rev-parse HEAD`; when the
+  # repo isn't git (or has no commits yet), it is set to "UNPINNED" with
+  # a printed warning — pin it manually before trusting the case to
+  # replay. required/forbidden are seeded from the originating task's
+  # payload.design.required_seams / .forbidden when present.
+
+agent eval list [--json]
+  # lists every case under .agent/evals/, across categories.
+
+agent retro create <task-id> --trigger ... [--eval] [--eval-category <category>]
+  # `--eval` chains `agent eval create --from-retro` onto the new
+  # retrospective and records the resulting path in the
+  # retrospective's own `eval_case` field (spec F.10 "Produce a
+  # replayable eval case for every qualifying failure").
+```

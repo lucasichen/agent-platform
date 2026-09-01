@@ -1,0 +1,12 @@
+{
+  "task": "ACCOUNT-12",
+  "trigger": "architecture-rejection",
+  "cause": "ARCHITECTURE",
+  "candidate_interventions": [
+    {
+      "kind": "lint-rule",
+      "detail": "Worker bypassed SessionService.revokeAll; forbid direct session persistence mutation outside SessionService."
+    }
+  ],
+  "status": "proposed"
+}

@@ -199,17 +199,38 @@ export class EvidenceIncompleteError extends LedgerError {
   }
 }
 
+/** Layer 1 architecture invariant violations block a gate the same way incomplete evidence does (spec §10.3: "A functionally correct implementation can fail this gate"). */
+export class ArchViolationsError extends LedgerError {
+  constructor(taskId: string, problems: string[]) {
+    super(
+      [
+        `Architecture check failed (spec §10.3, Layer 1): task '${taskId}' gate refused, invariant violations found:`,
+        ...problems.map((p) => `  - ${p}`),
+      ].join("\n")
+    );
+    this.name = "ArchViolationsError";
+  }
+}
+
 /**
- * Apply a gate result. `checkEvidenceFn` is injected by evidence.ts to
- * avoid a circular import; it must throw EvidenceIncompleteError-shaped
- * problems (returned, not thrown) when result === 'pass' and evidence is
- * incomplete for the given gate.
+ * Apply a gate result. `checkEvidence` is injected by evidence.ts to
+ * avoid a circular import; it must return a list of problem strings
+ * (empty = complete) when result === 'pass' and evidence is incomplete for
+ * the given gate.
+ *
+ * `checkArch` (optional, injected by archcheck.ts via cli.ts, again to
+ * avoid a circular import) is consulted only for `review` gates on
+ * implementation tasks passing — the same point spec §10.3 places the
+ * architecture gate. Omitted by direct ledger callers (and by existing
+ * tests) it is a no-op, so this is backward compatible: only `agent task
+ * gate` wires the real check.
  */
 export function gateTask(
   repo: string,
   taskId: string,
   opts: GateOptions,
-  checkEvidence: (repo: string, task: Task, gate: "verification" | "review") => string[]
+  checkEvidence: (repo: string, task: Task, gate: "verification" | "review") => string[],
+  checkArch?: (repo: string, task: Task) => string[]
 ): Task {
   const loc = locateTask(repo, taskId);
   if (!loc) throw new LedgerError(`Task '${taskId}' not found.`);
@@ -227,6 +248,12 @@ export function gateTask(
     const problems = checkEvidence(repo, task, opts.gate);
     if (problems.length > 0) {
       throw new EvidenceIncompleteError(taskId, problems);
+    }
+    if (opts.gate === "review" && isImpl && checkArch) {
+      const archProblems = checkArch(repo, task);
+      if (archProblems.length > 0) {
+        throw new ArchViolationsError(taskId, archProblems);
+      }
     }
     const to: TaskState = isImpl ? (opts.gate === "verification" ? "REVIEWING" : "MERGE_READY") : "DONE";
     return commitTransition(repo, loc.missionId, task, to, opts.actor, `gate ${opts.gate} passed`);

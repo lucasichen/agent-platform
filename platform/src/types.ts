@@ -205,3 +205,43 @@ export interface ReviewVerdict {
   findings: { kind: string; detail: string; ref?: string; location?: string }[];
   reviewer: string;
 }
+
+export type RetroCause =
+  | "SPEC"
+  | "PLANNING"
+  | "ARCHITECTURE"
+  | "ROUTING"
+  | "CONTEXT"
+  | "SKILL"
+  | "MEMORY"
+  | "HARNESS"
+  | "TOOLING"
+  | "CODEBASE"
+  | "MODEL";
+
+export interface Retrospective {
+  task: string;
+  trigger:
+    | "failed-task"
+    | "architecture-rejection"
+    | "human-correction"
+    | "high-cost-run"
+    | "unexpected-escalation"
+    | "rollback"
+    | "strong-success";
+  cause: RetroCause;
+  candidate_interventions: { kind: string; detail: string }[];
+  eval_case?: string;
+  status: "proposed" | "accepted" | "rejected" | "applied";
+}
+
+/** .agent/evals/<category>/<ID>.yaml (spec §13.5, F.10, schemas/eval-case.schema.json). */
+export interface EvalCase {
+  id: string;
+  repo_snapshot: string;
+  task: string;
+  known_failure: string;
+  required?: string[];
+  forbidden?: string[];
+  [key: string]: unknown;
+}

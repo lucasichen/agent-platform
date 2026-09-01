@@ -1,0 +1,76 @@
+# .agent/verification/web/journeys.yaml
+#
+# owner: repo maintainer role (spec §12.4, same authority as repo.yaml)
+# staleness trigger: every journey below is executed by run.mjs in CI /
+#   by verifier tasks (spec §9.1); a step that stops succeeding fails
+#   the build, the same mechanical trigger as repo.yaml (spec §12.4).
+#
+# THIS IS AN EXAMPLE. run.mjs falls back to this file with a warning
+# when journeys.yaml does not exist, but it will refuse to run against
+# the literal {{placeholders}} below — copy this file to journeys.yaml
+# and fill in every one for this repository before verification can
+# actually pass anything.
+#
+# One entry per real user journey (spec §9.1): start isolated deps ->
+# start backend -> start portal -> seed fixture -> open browser ->
+# perform the actual journey -> inspect network -> inspect console ->
+# inspect resulting state -> capture evidence. run.mjs drives the
+# "open browser ... capture evidence" portion; service startup and
+# fixture seeding happen once, before any journey runs.
+
+# Base URL journeys are resolved against (each step's `target`/`path` is
+# joined onto this). Overridable with --base-url.
+base_url: "{{e.g. http://localhost:3000}}"
+
+fixtures:
+  # Optional: a command that seeds the data every journey below depends
+  # on. Run once, before any journey, against the started services.
+  seed: "{{e.g. npm run seed:test}}"
+
+auth:
+  # none | cookie | header | login-form — how a verifier obtains a test
+  # identity/session (spec §9 "authentication"). This scaffold executes
+  # login-form as ordinary journey steps (see the sign-in journey
+  # below); cookie/header strategies are documented here for the
+  # operator to wire into a shared `beforeEach`-style step list once
+  # real journeys exist, since the exact mechanism is repo-specific.
+  strategy: "{{none | cookie | header | login-form}}"
+
+journeys:
+  - name: "{{journey-name, e.g. sign-up-and-create-project}}"
+    steps:
+      - action: goto
+        target: "{{e.g. /signup}}"
+      - action: fill
+        selector: "{{css selector, e.g. #email}}"
+        value: "{{literal value, or $ENV_VAR_NAME to read from the environment — never inline a real secret here}}"
+      - action: fill
+        selector: "{{css selector, e.g. #password}}"
+        value: "$TEST_USER_PASSWORD"
+      - action: click
+        selector: "{{css selector, e.g. #submit}}"
+      - action: wait_for
+        selector: "{{css selector that only appears after success, e.g. #dashboard}}"
+      - action: assert_url
+        expected: "{{substring the URL must contain after success, e.g. /dashboard}}"
+      - action: assert_text
+        selector: "{{css selector}}"
+        expected: "{{expected substring of that element's text}}"
+
+  # Add one entry per journey that matters for this repository. Keep
+  # each journey to one coherent user story (spec §9.1 "perform actual
+  # journey") — prefer several small journeys over one that tries to
+  # cover the whole app, so a failure points at a specific broken story.
+
+# Supported step actions (run.mjs web/run.mjs):
+#   goto        { target }              navigate to base_url + target
+#   fill        { selector, value }     fill a form field
+#   click       { selector }
+#   wait_for    { selector }            wait for an element to appear
+#   assert_text { selector, expected }  element text must contain expected
+#   assert_url  { expected }            current URL must contain expected
+#
+# Every journey automatically gets, on top of these steps: a full-page
+# screenshot, a Playwright trace, and captured browser console + network
+# logs (spec §9.1 evidence list) — written under the run's --out
+# directory and referenced from verification/result.json.

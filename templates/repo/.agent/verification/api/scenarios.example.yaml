@@ -1,0 +1,96 @@
+# .agent/verification/api/scenarios.yaml
+#
+# owner: repo maintainer role (spec §12.4, same authority as repo.yaml)
+# staleness trigger: every scenario below is executed by run.mjs in CI /
+#   by verifier tasks (spec §9.2); a scenario that stops succeeding
+#   fails the build, the same mechanical trigger as repo.yaml (spec
+#   §12.4).
+#
+# THIS IS AN EXAMPLE. run.mjs falls back to this file with a warning
+# when scenarios.yaml does not exist, but it will refuse to run against
+# the literal {{placeholders}} below — copy this file to scenarios.yaml
+# and fill in every one for this repository.
+#
+# LLMs may pick which scenarios to write; every assertion below is
+# executed and evaluated deterministically by run.mjs, never eyeballed
+# (spec §9.2 verbatim: "LLMs may generate scenarios. Programs should
+# execute assertions deterministically").
+
+base_url: "{{e.g. http://localhost:4000}}"
+
+scenarios:
+  - name: "{{scenario-name, e.g. create-account}}"
+    request:
+      method: "{{GET|POST|PUT|PATCH|DELETE}}"
+      path: "{{e.g. /api/accounts}}"
+      headers:
+        Content-Type: "application/json"
+        Authorization: "Bearer $TEST_USER_TOKEN"
+      body:
+        email: "{{e.g. qa+create-account@example.test}}"
+      # Optional: pull fields out of this request's JSON response into
+      # named values other requests in this scenario can reference as
+      # ${capture.<key>}. Dot-path only (e.g. "data.id"), not full
+      # JSONPath.
+      capture:
+        id: "id"
+    expect:
+      status: 201
+      # Every key here is checked with a dot-path lookup against the
+      # JSON response body (deep-equal on the value found).
+      body_contains:
+        email: "{{same value as request.body.email above}}"
+
+    # spec §9.2 "read-after-write": a second request confirming the
+    # write above is actually visible on read, not just accepted.
+    read_after_write:
+      request:
+        method: GET
+        path: "/api/accounts/${capture.id}"
+        headers:
+          Authorization: "Bearer $TEST_USER_TOKEN"
+      expect:
+        status: 200
+        body_contains:
+          id: "${capture.id}"
+
+    # spec §9.2 "authorization": the same or an adjacent request made
+    # without (or with insufficient) credentials must be rejected.
+    authz:
+      request:
+        method: GET
+        path: "/api/accounts/${capture.id}"
+        headers: {}
+      expect_status: 401
+
+    # spec §9.2 "idempotency": repeating the request must not change the
+    # outcome (safe methods) or must produce a defined, stable result
+    # (e.g. a POST with the same idempotency key).
+    idempotency:
+      repeat: 2
+      expect_status: 200
+      expect_same_result: true
+
+  # Add one scenario per behavior that matters for this endpoint set:
+  # status, schema, response body, persistence effects, read-after-
+  # write, external calls, logs, authN/authZ, idempotency, failure
+  # scenarios, boundary behavior (spec §9.2's checklist). Prefer many
+  # small scenarios over one that chains unrelated behaviors, so a
+  # failure points at a specific broken assertion.
+
+# Supported scenario fields (api/run.mjs):
+#   request           { method, path, headers, body, capture }
+#   expect            { status, body_contains }
+#   read_after_write   { request, expect }        (optional)
+#   authz              { request, expect_status }  (optional)
+#   idempotency        { repeat, expect_status, expect_same_result }  (optional)
+#
+# `path` and JSON `body` values may reference ${capture.<key>} to use a
+# value captured from `request`'s own response (e.g. a created
+# resource's id). Every request/response pair is written to this run's
+# evidence log for the scenario, referenced from verification/result.json.
+#
+# Where Testcontainers plugs in: see ../README.md "Where Testcontainers
+# plugs in" — this scaffold documents repo.yaml `dependencies` but does
+# not orchestrate containers generically; wire ephemeral instances for
+# this repo's stack there.

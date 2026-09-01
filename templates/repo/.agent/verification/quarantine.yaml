@@ -1,0 +1,48 @@
+# .agent/verification/quarantine.yaml
+#
+# owner: verifier fleet role (spec §12.4 pattern: the role with authority
+#   to change a durable artifact is the role that produces it — F.7 is
+#   the role that observes flake history and proposes quarantine entries,
+#   spec §9.5, roles/F7-verifier.md #7)
+# staleness trigger: read by every run.mjs invocation (spec §9.5
+#   "quarantine list for flaky checks"); an entry whose `check` name no
+#   longer appears in any journeys.yaml/scenarios.yaml is stale and
+#   should be removed by the next verifier that notices it, not left
+#   silently orphaned (spec §12.4 trust decay rule).
+#
+# Flake control (spec §9.5, verbatim requirements):
+#   quarantine list for flaky checks
+#   retry-once-then-quarantine, automatic
+#   flake rate as a first-class metric (Appendix D)
+#
+# retry-once-then-quarantine is automatic and needs no entry here:
+# lib/checks.mjs retries every failing check exactly once before
+# recording a result (see ../README.md "Flake control"). This file is
+# the DURABLE record of checks with an already-demonstrated flake
+# history, so a human reading a run's result.json can tell "known
+# flake, tracked" apart from "new failure, needs classification."
+#
+# A check enters this list only after a demonstrated flake history
+# (inconsistent pass/fail with no code change between runs) — never to
+# silence a real, reproducible failure. Every failure is still
+# classified PRODUCT FAILURE | ENVIRONMENT FAILURE | FLAKE before it
+# enters the learning loop (spec §9.5; roles/F7-verifier.md #6) — an
+# entry here flags a check as flake-prone, it does not pre-classify any
+# specific run's failure, and it never converts a FAIL into a silent
+# PASS (roles/F7-verifier.md #7).
+
+quarantine: []
+
+# Example entry -- replace/remove once real quarantine history exists.
+# `check` must match the "<kind>:<name>" format run.mjs uses, e.g.
+# "web:<journey name>" or "api:<scenario name>".
+#
+# quarantine:
+#   - check: "web:checkout-happy-path"
+#     since: "2026-08-01"
+#     reason: >
+#       3rd-party payment sandbox intermittently times out under load;
+#       not reproducible locally. Tracked in INCIDENT-042.
+#     flake_rate_7d: 0.18
+#     added_by: "verifier-03"
+#     review_by: "2026-09-15"   # forces re-evaluation; not a permanent exemption

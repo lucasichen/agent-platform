@@ -103,9 +103,16 @@ Required before work begins:
 Recommended skills (claude-code):
   skills/vendor/superpowers/skills/test-driven-development
   skills/vendor/pstack/skills/poteto-mode
+Related memory:
+  .agent/memory/index.md
+  .agent/memory/auth.md
 ```
 
-(`--json` includes the same data as `{startup_skills: [], skills: []}`.)
+(`--json` includes the same data as `{startup_skills: [], skills: [],
+memory: {...}}`.) The "Related memory" paths are Field Guide entries
+matched to the task's `payload.areas` (see `docs/memory.md`) — read
+them before working; treat entries flagged `needs-reverification` as
+hints, not truth.
 If the task's role has no `startup_skills` binding, load the role's own
 contract file (`roles/F<N>-*.md`) and work from that directly — a task
 whose role names a `worker` binding should still be treated as if

@@ -409,12 +409,13 @@ function evalOwnership(inv: OwnershipInvariant, ctx: ScanContext, out: ArchViola
   }
 }
 
-function evalDuplicateConcept(inv: DuplicateConceptInvariant, ctx: ScanContext, out: ArchViolation[]): void {
+function evalDuplicateConcept(inv: DuplicateConceptInvariant, ctx: ScanContext, out: ArchViolation[], notes: string[]): void {
   if (!inv.pattern) return;
   let re: RegExp;
   try {
     re = new RegExp(inv.pattern);
-  } catch {
+  } catch (e) {
+    notes.push(`invariant '${inv.id}': invalid pattern, rule not evaluated: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
   const files = inv.paths ? ctx.scanSet.filter((f) => globMatch(inv.paths as string, f)) : ctx.scanSet;
@@ -506,7 +507,7 @@ export function runArchCheck(repo: string, opts: ArchCheckOptions = {}): ArchChe
         evalOwnership(inv, ctx, violations);
         break;
       case "duplicate-domain-concept":
-        evalDuplicateConcept(inv, ctx, warnings);
+        evalDuplicateConcept(inv, ctx, warnings, notes);
         break;
       default:
         notes.push(`Unknown rule type on invariant '${(inv as InvariantBase).id}'; skipped.`);

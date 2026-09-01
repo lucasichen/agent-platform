@@ -105,6 +105,34 @@ test("a referenced skill whose directory cannot be resolved is a per-item warnin
   assert.equal(statuses.get("skills/vendor/ghost-pack/skills/does-not-exist"), "missing");
 });
 
+// Fix 6: a malformed SKILL.md frontmatter is a per-item warning, not a crash that aborts the batch.
+
+test("install --harness claude-code: a malformed SKILL.md frontmatter is a per-item warning, other skills still install", () => {
+  const repo = makeTempRepo();
+  installFixtureSkills(repo);
+  installFixtureBindings(repo, "bad-skill");
+
+  const result = installSkills(repo, { harness: "claude-code" });
+  const statuses = new Map(result.items.map((i) => [i.relPath, i.status]));
+  assert.equal(statuses.get("skills/worker-startup"), "installed", "the well-formed skill must still install");
+  assert.equal(statuses.get("skills/vendor/badpack/skills/broken-skill"), "warning");
+  const broken = result.items.find((i) => i.relPath === "skills/vendor/badpack/skills/broken-skill")!;
+  assert.match(broken.detail ?? "", /malformed SKILL\.md frontmatter/);
+  assert.ok(fs.existsSync(path.join(repo, ".claude", "skills", "worker-startup", "SKILL.md")));
+});
+
+test("install --harness generic: a malformed SKILL.md frontmatter is a per-item warning, the index still gets the other skill's row", () => {
+  const repo = makeTempRepo();
+  installFixtureSkills(repo);
+  installFixtureBindings(repo, "bad-skill");
+
+  const result = installSkills(repo, { harness: "generic" });
+  const statuses = new Map(result.items.map((i) => [i.relPath, i.status]));
+  assert.equal(statuses.get("skills/vendor/badpack/skills/broken-skill"), "warning");
+  const content = fs.readFileSync(result.indexFile!, "utf8");
+  assert.match(content, /\| worker-startup \|/);
+});
+
 test("installSkills falls back to the packaged default bindings.yaml when the repo has none", () => {
   const repo = makeTempRepo();
   // No installFixtureBindings call: the repo has no .agent/policies/bindings.yaml at all.

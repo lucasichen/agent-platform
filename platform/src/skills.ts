@@ -4,9 +4,11 @@
 // as design, not code: the hosts/ adapter layer"). generic writes an
 // index instead of copying, and never edits AGENTS.md. Idempotent by
 // default (already-installed skills are skipped and reported); --force
-// overwrites. A skill whose directory cannot be resolved is reported as a
-// per-item warning, never a crash — packs may legitimately be absent
-// while Wave B/C are still in progress.
+// overwrites. A skill whose directory cannot be resolved, or whose
+// SKILL.md has malformed frontmatter, is reported as a per-item warning,
+// never a crash that aborts the rest of the batch — skill packs are
+// shipped, but absence is tolerated for forward-compatibility, and one
+// author's typo should not block installing every other referenced skill.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { BindingsPolicy, Harness } from "./bindings";
@@ -18,7 +20,7 @@ const DEFAULT_INSTALL_PATH: Record<"claude-code" | "cursor", string> = {
   cursor: ".cursor/skills",
 };
 
-export type SkillInstallStatus = "installed" | "overwritten" | "skipped" | "missing";
+export type SkillInstallStatus = "installed" | "overwritten" | "skipped" | "missing" | "warning";
 
 export interface SkillInstallItem {
   relPath: string;
@@ -67,7 +69,16 @@ function installOneToHarnessDir(repo: string, relPath: string, installDir: strin
       detail: `skill directory not found for '${relPath}' (checked ${repo} and the packaged skills tree)`,
     };
   }
-  const fm = parseSkillFrontmatter(skillMd);
+  let fm: ReturnType<typeof parseSkillFrontmatter>;
+  try {
+    fm = parseSkillFrontmatter(skillMd);
+  } catch (e) {
+    return {
+      relPath,
+      status: "warning",
+      detail: `malformed SKILL.md frontmatter, skipped: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
   const srcDir = path.dirname(skillMd);
   const destDir = path.join(installDir, fm.name);
   if (fs.existsSync(destDir)) {
@@ -95,7 +106,17 @@ function writeGenericIndex(repo: string, refs: string[], installDirOverride?: st
       });
       continue;
     }
-    const fm = parseSkillFrontmatter(skillMd);
+    let fm: ReturnType<typeof parseSkillFrontmatter>;
+    try {
+      fm = parseSkillFrontmatter(skillMd);
+    } catch (e) {
+      items.push({
+        relPath,
+        status: "warning",
+        detail: `malformed SKILL.md frontmatter, skipped: ${e instanceof Error ? e.message : String(e)}`,
+      });
+      continue;
+    }
     // Frontmatter descriptions may be multi-line YAML scalars; collapse to a
     // single line so they cannot break the generated Markdown table.
     const description = (fm.description ?? "").replace(/\s+/g, " ").trim();

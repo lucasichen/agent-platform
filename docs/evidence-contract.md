@@ -138,17 +138,26 @@ transcript — is what every verifier and reviewer evaluates.
   "task": "ACCOUNT-12",
   "commit": "42f81c9",
   "checks": [
-    { "name": "unit", "status": "PASS", "evidence": "verification/logs/unit.log" },
-    { "name": "api-deletion-journey", "status": "PASS", "evidence": "verification/trace.zip" }
+    { "name": "unit", "status": "PASS", "evidence": "logs/unit-attempt1.log" },
+    { "name": "api-deletion-journey", "status": "PASS", "evidence": "trace-api-deletion-journey-attempt1.zip" }
   ],
   "environment": "docker-compose: postgres, api, portal",
   "reproducible_with": "agent verify ACCOUNT-12 --local"
 }
 ```
 
-`status` is `PASS|FAIL|SKIPPED`. Every check names the file under
-`verification/` that backs it — a check with no `evidence` value is
-invalid, not merely "trust me."
+`status` is `PASS|FAIL|SKIPPED`. Every check's `evidence` value is a
+path **relative to `verification/`** (i.e. `logs/unit-attempt1.log`
+above means the real file is
+`.agent/runs/<TASK-ID>/verification/logs/unit-attempt1.log`) — `agent
+evidence check` resolves it exactly that way (`platform/src/evidence.ts`
+`checkVerificationEvidence`), and every scaffold under
+`.agent/verification/` (`web/run.mjs`, `api/run.mjs`) emits bare paths
+like `logs/<scenario>-attempt1.json` for the same reason. A check with no
+`evidence` value is invalid, not merely "trust me." (`web/run.mjs` and
+`api/run.mjs` suffix every evidence file with `-attempt1`/`-attempt2` —
+see `.agent/verification/README.md` "Per-attempt evidence naming" — so a
+retried check's evidence never overwrites the failing first attempt.)
 
 ### `reviews/{spec,quality,architecture}.json`
 

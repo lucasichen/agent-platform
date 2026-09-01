@@ -13,13 +13,19 @@
 // with a documented fallback to its .example.yaml sibling.
 //
 // Minimal fallback parser scope: block mappings, block sequences (of
-// scalars or mappings), quoted/bare scalars, comments, blank lines —
-// exactly what repo.yaml and this directory's own journeys/scenarios/
-// quarantine templates use. It does NOT support flow style ({}/[]
-// beyond the empty literals), anchors/aliases, multiline block scalars,
-// or tags. If a repo's real journeys.yaml/scenarios.yaml grows past this
-// subset, `npm install -D yaml` in the target repo — this module prefers
-// that automatically, no code change needed here.
+// scalars or mappings), quoted/bare scalars, comments, blank lines, and
+// basic literal (`|`) / folded (`>`) block scalars (including the `-`
+// strip-chomp indicator) — exactly what repo.yaml and this directory's
+// own journeys/scenarios/quarantine templates use. Block-scalar support
+// is a deliberate approximation, not a full YAML 1.1 implementation: it
+// does not handle explicit indentation indicators (`|2`), `+` keep-chomp,
+// or more-indented "literal" lines inside a folded block (those fold like
+// any other line here, where real YAML would preserve their line breaks)
+// — see `extractBlockScalars()` below. It does NOT support flow style
+// ({}/[] beyond the empty literals), anchors/aliases, or tags. If a
+// repo's real journeys.yaml/scenarios.yaml grows past this subset, `npm
+// install -D yaml` in the target repo — this module prefers that
+// automatically, no code change needed here.
 
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -127,7 +133,8 @@ export async function loadConfigWithFallback({ dir, primaryName, exampleName, ki
 // ---------------------------------------------------------------------
 
 function minimalYamlParse(text) {
-  const lines = normalizeLines(text);
+  const { text: expanded, placeholders } = extractBlockScalars(text);
+  const lines = normalizeLines(expanded);
   let idx = 0;
 
   function indentOf(line) {
@@ -223,7 +230,115 @@ function minimalYamlParse(text) {
   }
 
   const result = parseBlock(0);
-  return result === null ? {} : result;
+  return restoreBlockScalars(result === null ? {} : result, placeholders);
+}
+
+// A NUL-delimited prefix can't appear in any real YAML text this parser
+// sees, so it's safe as a swap-in token that survives comment-stripping
+// and blank-line filtering (a bare word — parseScalar returns it as-is).
+const BLOCK_SCALAR_PLACEHOLDER = '\u0000BLOCKSCALAR';
+
+/**
+ * Pre-pass over the raw text (before comment/blank-line stripping, which
+ * would otherwise corrupt block-scalar content): finds `key: |`/`key: >`
+ * headers (optionally `-` strip-chomped), consumes the following
+ * more-indented block, folds/joins it into a single string per the
+ * (approximate) rules below, and replaces the whole header+block with a
+ * one-line `key: <placeholder>` so the rest of the parser never has to
+ * know block scalars exist. `restoreBlockScalars()` swaps the
+ * placeholders back in after the normal recursive-descent parse.
+ */
+function extractBlockScalars(text) {
+  const raw = text.split(/\r?\n/);
+  const headerRe = /^(\s*)([^:\n]+):[ \t]*([|>])([+-]?)[ \t]*$/;
+  const out = [];
+  const placeholders = new Map();
+  let counter = 0;
+  let i = 0;
+  while (i < raw.length) {
+    const line = raw[i];
+    const m = !/^\s*#/.test(line) && line.match(headerRe);
+    if (!m) {
+      out.push(line);
+      i += 1;
+      continue;
+    }
+    const [, indent, keyPart, style, chomp] = m;
+    const headerIndent = indent.length;
+    const blockLines = [];
+    let j = i + 1;
+    while (j < raw.length) {
+      const l = raw[j];
+      if (l.trim() === '') {
+        blockLines.push('');
+        j += 1;
+        continue;
+      }
+      if (l.match(/^ */)[0].length <= headerIndent) break;
+      blockLines.push(l);
+      j += 1;
+    }
+    // Trailing blank lines collected above are just lookahead before the
+    // next key/EOF, not block content.
+    while (blockLines.length > 0 && blockLines[blockLines.length - 1] === '') {
+      blockLines.pop();
+    }
+    if (blockLines.length === 0) {
+      // `key: >` with nothing under it — not really a block scalar; leave
+      // the line as-is and let parseScalar treat `>`/`|` as a bare scalar
+      // like before.
+      out.push(line);
+      i += 1;
+      continue;
+    }
+    const blockIndent = blockLines.find((l) => l !== '').match(/^ */)[0].length;
+    const dedented = blockLines.map((l) => (l === '' ? '' : l.slice(blockIndent)));
+    const content = style === '|' ? foldLiteral(dedented) : foldFolded(dedented);
+    const chomped = chomp === '-' ? content : `${content}\n`;
+    const token = `${BLOCK_SCALAR_PLACEHOLDER}${counter}\u0000`;
+    counter += 1;
+    placeholders.set(token, chomped);
+    out.push(`${indent}${keyPart}: ${token}`);
+    i = j;
+  }
+  return { text: out.join('\n'), placeholders };
+}
+
+// Literal (`|`): line breaks are preserved as-is.
+function foldLiteral(lines) {
+  return lines.join('\n');
+}
+
+// Folded (`>`, approximate): blank lines mark paragraph breaks (become a
+// single `\n`); consecutive non-blank lines within a paragraph are joined
+// with a space, same as real YAML folding. Unlike real YAML, a
+// more-indented "literal" line inside a folded block is not special-cased
+// here — it folds like any other line.
+function foldFolded(lines) {
+  const paragraphs = [];
+  let current = [];
+  for (const l of lines) {
+    if (l === '') {
+      if (current.length > 0) paragraphs.push(current.join(' '));
+      current = [];
+    } else {
+      current.push(l);
+    }
+  }
+  if (current.length > 0) paragraphs.push(current.join(' '));
+  return paragraphs.join('\n');
+}
+
+function restoreBlockScalars(value, placeholders) {
+  if (placeholders.size === 0) return value;
+  if (typeof value === 'string') return placeholders.has(value) ? placeholders.get(value) : value;
+  if (Array.isArray(value)) return value.map((v) => restoreBlockScalars(v, placeholders));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = restoreBlockScalars(v, placeholders);
+    return out;
+  }
+  return value;
 }
 
 function normalizeLines(text) {

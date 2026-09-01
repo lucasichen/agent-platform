@@ -56,7 +56,9 @@ your-project/.agent/
   domain/CONTEXT.md
   architecture/{system.md,canonical-patterns.md,adr/,design/}
   features/feature-map.yaml
-  policies/{risk.yaml,models.yaml,escalation.yaml,architecture.yaml}
+  policies/{risk.yaml,models.yaml,escalation.yaml,architecture.example.yaml}
+  workflows/               the three packaged workflow templates (spec Appendix A):
+                           project-definition.yaml, feature-development.yaml, bug-fix.yaml
   verification/README.md
   memory/{index.md,README.md,discoveries/,incidents/}
   evals/README.md
@@ -214,18 +216,22 @@ every agent should read before doing anything else:
 
 ```text
 Required before work begins:
-  skills/worker-startup
+  - skills/worker-startup
 Recommended skills (claude-code):
-  skills/vendor/superpowers/skills/test-driven-development
-  skills/vendor/pstack/skills/poteto-mode
+  - skills/vendor/superpowers/skills/test-driven-development
+  - skills/vendor/pstack/skills/poteto-mode
+Related memory:
+  - .agent/memory/index.md
+  - .agent/memory/auth.md
 ```
 
-plus, once memory recall is live (`docs/memory.md` §3 — landing in the
-current build wave), any memory paths matching the task's
-`payload.areas`. `--json` carries the same data as `{startup_skills:
-[], skills: []}`. A repo with no `bindings.yaml` prints nothing — this
-is optional policy, not a hard dependency, and step 3's `skills install`
-is not required for it to work.
+The "Related memory" lines are memory recall (`docs/memory.md` §3) —
+Field Guide entries matched to the task's `payload.areas`, printed the
+same way skills are. `--json` carries the same data as
+`{startup_skills: [], skills: [], memory: {...}}`. A repo with no
+`bindings.yaml` prints no skills section — this is optional policy, not
+a hard dependency, and step 3's `skills install` is not required for it
+to work; memory recall still runs regardless.
 
 Pass `--worktree` for implementation tasks where filesystem isolation
 helps: on a git repo it creates `.worktrees/<TASK-ID>` on branch
@@ -251,11 +257,17 @@ agent task gate <TASK-ID> --gate review --result pass \
   --evidence .agent/runs/<TASK-ID>/reviews/architecture.json
 ```
 
-A gate call with no `--evidence` pointing to a real file is refused — see
-`docs/evidence-contract.md`'s **PASS without evidence is FAIL** rule.
-This is the mechanical version of "workers do not certify themselves"
-(spec §2): the CLI will not accept a worker's own say-so as a passing
-verification or review.
+`--evidence` is informational (it's not validated, and can be omitted) —
+what actually enforces **PASS without evidence is FAIL**
+(`docs/evidence-contract.md`) is that `--result pass` internally runs
+`agent evidence check`, which looks at the gate's well-known evidence
+path regardless of what (if anything) `--evidence` named:
+`verification/result.json` for `--gate verification`,
+`reviews/<lens>.json` per required review lens for `--gate review`. A
+missing, invalid, or incomplete file at that well-known path refuses the
+gate. This is the mechanical version of "workers do not certify
+themselves" (spec §2): the CLI will not accept a worker's own say-so as
+a passing verification or review.
 
 If a task's lease expires (agent crashed, walked away, whatever),
 `agent task reclaim` frees it back to `READY` so nothing silently stalls.
@@ -267,9 +279,11 @@ If it exhausts `budget.attempts`, it moves to `BLOCKED` with reason
 Every task run leaves a full bundle under `.agent/runs/<TASK-ID>/` —
 transcript, diff, verification results, review verdicts, cost, the final
 four-dimension result, and (when triggered) a retrospective. Full shapes:
-`docs/evidence-contract.md`. `agent evidence init <TASK-ID>` scaffolds the
-directory at claim time; `agent evidence check <TASK-ID>` is what gates
-call internally to refuse incomplete bundles.
+`docs/evidence-contract.md`. `agent task claim` scaffolds the run
+directory automatically; `agent evidence init <TASK-ID>` remains
+available to (re)scaffold it manually (e.g. after a lease was reclaimed
+and a fresh evidence bundle is wanted). `agent evidence check <TASK-ID>`
+is what gates call internally to refuse incomplete bundles.
 
 You should rarely need to touch these files by hand — the CLI and the
 role contracts produce them. Read them when you're deciding whether to
@@ -278,11 +292,8 @@ you're running `agent retro create` to turn a failure into learning.
 
 ## 8. Memory: from candidate to durable fact
 
-(`agent memory ...` is landing in the current build wave — see
-`docs/memory.md` for the full design; a role that hasn't shipped this
-yet in your checkout is expected, not a bug.)
-
-The short version of the loop:
+`docs/memory.md` has the full design behind `agent memory ...`. The
+short version of the loop:
 
 1. Any role, while working a task, appends a fact future agents should
    know *before* their task starts to

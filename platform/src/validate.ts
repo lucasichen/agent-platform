@@ -120,6 +120,15 @@ export function inferSchemaName(filePath: string): string | undefined {
   if (base === "result.json") return "result";
   if (base === "cost.json") return "cost";
   if (base === "retrospective.json") return "retrospective";
-  if (parentDir.match(/^evals?/) && base.endsWith(".yaml")) return "eval-case";
+  // .agent/evals/<category>/<ID>.yaml (spec §13.5): the "evals" segment is
+  // the category dir's *parent*, not the file's immediate parent — check
+  // every ancestor directory, not just parentDir, so a real eval case at
+  // its documented depth is actually recognized (matching /^evals?$/
+  // exactly, not merely a prefix, so an unrelated dir like "evaluations"
+  // does not false-positive).
+  if (base.endsWith(".yaml")) {
+    const ancestors = path.dirname(filePath).split(/[\\/]+/);
+    if (ancestors.some((d) => /^evals?$/.test(d))) return "eval-case";
+  }
   return undefined;
 }

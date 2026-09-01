@@ -211,6 +211,28 @@ test("--diff falls back to whole-tree scan on a non-git repo, with a note", () =
 
 // ------------------------------------------------------------------- warn-level
 
+// Fix 7: an invalid regex on a duplicate-domain-concept rule is surfaced in result.notes, not silently swallowed.
+
+test("duplicate-domain-concept with an invalid regex pattern is reported as a note, rule not evaluated", () => {
+  const repo = makeTempRepo();
+  fs.mkdirSync(path.dirname(P.architecturePolicyFile(repo)), { recursive: true });
+  fs.writeFileSync(
+    P.architecturePolicyFile(repo),
+    "invariants:\n  - id: ARCH-BAD-REGEX\n    rule: duplicate-domain-concept\n    pattern: \"(unclosed\"\n",
+    "utf8"
+  );
+  fs.mkdirSync(path.join(repo, "src"), { recursive: true });
+  fs.writeFileSync(path.join(repo, "src", "widget.ts"), "export class Widget {}\n", "utf8");
+
+  const result = runArchCheck(repo);
+  assert.deepEqual(result.violations, []);
+  assert.deepEqual(result.warnings, []);
+  assert.ok(
+    result.notes.some((n) => n.includes("ARCH-BAD-REGEX") && n.includes("invalid pattern") && n.includes("rule not evaluated")),
+    `expected an invalid-pattern note; got: ${JSON.stringify(result.notes)}`
+  );
+});
+
 test("duplicate-domain-concept is warn-only: reported in warnings, never in violations", () => {
   const repo = makeCleanArchRepo();
   copyFile(snippet("duplicate-widget"), path.join(repo, "services", "widget", "RogueWidgetManager.ts"));

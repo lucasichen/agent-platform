@@ -1,0 +1,25 @@
+# Condition-resolution fixture: `condition:` with neither predicate nor
+# owner — a template defect (compiler.ts step 1d, spec §3.2). The
+# workflow-template schema's condition oneOf already rejects this.
+id: condition-neither
+version: 1
+description: Malformed conditional stage (neither predicate nor owner) - must reject the whole template.
+
+entry_conditions:
+  - "mission goal is a small, bounded change"
+
+required_inputs:
+  - "brief.md"
+
+stages:
+  - id: broken
+    role: worker
+    type: implementation
+    depends_on: []
+    condition: {}
+    outputs: [candidate-diff]
+
+required_outputs:
+  - candidate-diff
+
+terminal_condition: "broken stage is DONE"

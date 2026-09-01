@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import type { Task } from "../src/types";
 import { makeTempRepo, baseMission, registerMission } from "./testutil";
 import * as ledger from "../src/ledger";
+import * as P from "../src/paths";
+import { writeJsonAtomic } from "../src/fsutil";
 
 const MISSION_ID = "MISSION-TEST-1";
 
@@ -58,6 +60,17 @@ test("MERGED (an implementation task's DONE point) satisfies dependents", () => 
   const downstreamId = "MISSION-TEST-1-DOWN2";
   ledger.writeTask(repo, MISSION_ID, task(implId, [], "MERGE_READY", "implementation"));
   ledger.writeTask(repo, MISSION_ID, task(downstreamId, [implId], "BLOCKED"));
+
+  // `task done` refuses MERGE_READY -> MERGED without a four-gate result.json (spec F.9, fix 2).
+  writeJsonAtomic(P.resultFile(repo, implId), {
+    task: implId,
+    commit: "UNKNOWN",
+    functional: "PASS",
+    specification: "SKIPPED",
+    architecture: "SKIPPED",
+    evolutionary: "SKIPPED",
+    verifier: "agent-a",
+  });
 
   ledger.doneTask(repo, implId, "merge-refinery");
   assert.equal(ledger.readTask(repo, implId).status, "MERGED");

@@ -200,6 +200,58 @@ test("approve lands the entry into its topic file, creates an index.md row for a
   assert.equal(indexRows.length, 1, "index must not gain a duplicate row for an existing topic");
 });
 
+// Fix 3: Tier B authority is domain-product-clarifier/specifier only (spec §12.2) — verifier is a Tier A approver, not Tier B.
+
+test("approve refuses 'verifier' for a Tier B entry (Tier B is domain-product-clarifier/specifier only)", () => {
+  const repo = initTempRepo();
+  ensureRefFile(repo);
+  const id = "MEM-TIERB-1";
+  writeCandidates(repo, id, [candidateLine({ tier: "B", areas: ["billing"] })]);
+  memory.materializeProposals(repo, id);
+
+  assert.throws(
+    () => memory.approveProposal(repo, `${id}-01`, "verifier"),
+    memory.MemoryTierGateError
+  );
+  const result = memory.approveProposal(repo, `${id}-01`, "domain-product-clarifier");
+  assert.equal(result.status, "active");
+});
+
+// Fix 4: approve/reject accept either the proposal's filename stem or its frontmatter id (the id `memory list` displays).
+
+test("approve accepts the frontmatter id (MEM-...) that `memory list` displays, not just the filename stem", () => {
+  const repo = initTempRepo();
+  ensureRefFile(repo);
+  const id = "MEM-BYFMID-1";
+  writeCandidates(repo, id, [candidateLine({ areas: ["auth"] })]);
+  memory.materializeProposals(repo, id);
+  const stem = `${id}-01`;
+
+  const listed = memory.listMemoryItems(repo, "pending");
+  const item = listed.find((i) => i.fileStem === stem);
+  assert.ok(item, "expected a pending item with this fileStem");
+  assert.notEqual(item!.id, stem, "frontmatter id must differ from the filename stem in this fixture");
+
+  const result = memory.approveProposal(repo, item!.id, "verifier");
+  assert.equal(result.status, "active");
+  assert.equal(fs.existsSync(P.memoryProposalFile(repo, stem)), false, "proposal must be landed");
+});
+
+test("reject accepts the frontmatter id (MEM-...) too", () => {
+  const repo = initTempRepo();
+  ensureRefFile(repo);
+  const id = "MEM-BYFMID-2";
+  writeCandidates(repo, id, [candidateLine({ tier: "B", areas: ["billing"] })]);
+  memory.materializeProposals(repo, id);
+  const stem = `${id}-01`;
+  const listed = memory.listMemoryItems(repo, "pending");
+  const item = listed.find((i) => i.fileStem === stem)!;
+
+  const result = memory.rejectProposal(repo, item.id, "specifier", "not durable enough");
+  assert.equal(result.status, "rejected");
+  assert.equal(fs.existsSync(P.memoryRejectedFile(repo, stem)), true);
+});
+
 test("reject moves a pending proposal to proposals/rejected/ with the reason preserved in frontmatter", () => {
   const repo = initTempRepo();
   ensureRefFile(repo);

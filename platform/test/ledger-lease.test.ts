@@ -89,6 +89,24 @@ test("reclaim: expired lease -> READY, attempt preserved, transition logged", ()
   assert.equal(reclaimedTask.lease?.owner, "agent-b");
 });
 
+// Fix 8: REPAIR is not reclaimable (every path into REPAIR already nulls
+// the lease and there is no legal REPAIR -> ASSIGNED edge; recovery is via
+// `agent status`'s stuck_in_repair exception surface, not lease reclaim).
+test("reclaim: a REPAIR task is never reclaimed, even if it somehow carries a lease-shaped field with a past expiry", () => {
+  const repo = setup();
+  const task = ledger.readTask(repo, "MISSION-TEST-1-LEASE");
+  task.status = "REPAIR";
+  // gateTask's real fail path always nulls the lease before landing in
+  // REPAIR; this directly (and artificially) sets a stale-looking lease to
+  // prove reclaimExpired does not treat REPAIR as reclaimable regardless.
+  task.lease = { owner: "agent-a", expires_at: new Date(Date.now() - 60_000).toISOString() };
+  ledger.writeTask(repo, "MISSION-TEST-1", task);
+
+  const results = ledger.reclaimExpired(repo);
+  assert.deepEqual(results, []);
+  assert.equal(ledger.readTask(repo, "MISSION-TEST-1-LEASE").status, "REPAIR");
+});
+
 test("every transition is appended to transitions.jsonl as {ts, from, to, actor, reason}", () => {
   const repo = setup();
   ledger.claimTask(repo, "MISSION-TEST-1-LEASE", "agent-a", 30);

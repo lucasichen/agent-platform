@@ -1,0 +1,38 @@
+# Condition-resolution fixture: a mechanically-evaluable predicate stage
+# (compiler.ts step 1a). Mirrors registry/workflows/feature-development.yaml's
+# architecture-check predicate exactly.
+id: condition-predicate
+version: 1
+description: Predicate-conditional stage for compiler condition-resolution tests.
+
+entry_conditions:
+  - "mission goal is a small, bounded change"
+
+required_inputs:
+  - "brief.md"
+
+stages:
+  - id: seed
+    role: uncertainty-resolver
+    type: research
+    depends_on: []
+    outputs: [artifact://research/seed.md]
+
+  - id: gate
+    role: architect
+    type: architecture
+    depends_on: [seed]
+    condition:
+      predicate: "task.risk >= R3 OR payload.design.decision_refs is empty or absent"
+    outputs: [architecture-design]
+
+  - id: build
+    role: worker
+    type: implementation
+    depends_on: [gate]
+    outputs: [candidate-diff]
+
+required_outputs:
+  - candidate-diff
+
+terminal_condition: "build stage is DONE"

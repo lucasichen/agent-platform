@@ -8,7 +8,8 @@ import * as ledger from "../src/ledger";
 import { EvidenceIncompleteError } from "../src/ledger";
 import { checkEvidence, scaffoldRunDir } from "../src/evidence";
 import * as P from "../src/paths";
-import { writeFileAtomic, writeJsonAtomic } from "../src/fsutil";
+import { writeFileAtomic, writeJsonAtomic, readFileIfExists } from "../src/fsutil";
+import { main } from "../src/cli";
 
 const MISSION_ID = "MISSION-TEST-1";
 
@@ -141,6 +142,58 @@ test("review gate requires a verdict file for every risk-required lens (R2: spec
 
   const updated = ledger.gateTask(repo, id, { gate: "review", result: "pass", actor: "agent-a" }, checkEvidence);
   assert.equal(updated.status, "MERGE_READY");
+});
+
+// Fix 10: `agent task claim` scaffolds .agent/runs/<TASK-ID>/, idempotently.
+
+function runCli(args: string[]): void {
+  const previousExitCode = process.exitCode;
+  process.exitCode = undefined;
+  try {
+    main(["node", "agent", ...args]);
+  } finally {
+    process.exitCode = previousExitCode;
+  }
+}
+
+test("task claim scaffolds the run directory (spec Appendix B: 'scaffolded at claim time')", () => {
+  const repo = initTempRepo();
+  registerMission(repo, baseMission());
+  const id = "MISSION-TEST-1-EV-CLAIM-1";
+  const task = { ...implTask(id), status: "READY" as const, lease: null };
+  ledger.writeTask(repo, MISSION_ID, task);
+
+  assert.equal(fs.existsSync(P.runDir(repo, id)), false);
+  runCli(["--repo", repo, "task", "claim", id, "--agent", "agent-a"]);
+
+  assert.ok(fs.existsSync(P.runTaskFile(repo, id)));
+  assert.ok(fs.existsSync(P.transitionsFile(repo, id)));
+  assert.ok(fs.existsSync(P.costFile(repo, id)));
+  assert.ok(fs.existsSync(path.join(P.runDir(repo, id), "verification")));
+  assert.ok(fs.existsSync(path.join(P.runDir(repo, id), "reviews")));
+});
+
+test("task claim's scaffold never clobbers evidence already collected (idempotent, skip-existing)", () => {
+  const repo = initTempRepo();
+  registerMission(repo, baseMission());
+  const id = "MISSION-TEST-1-EV-CLAIM-2";
+  const task = { ...implTask(id), status: "READY" as const, lease: null };
+  ledger.writeTask(repo, MISSION_ID, task);
+
+  runCli(["--repo", repo, "task", "claim", id, "--agent", "agent-a"]);
+  // Simulate work already recorded on this run.
+  writeFileAtomic(path.join(P.runDir(repo, id), "decisions.tsv"), "ts\tdecision\trationale\n2026-01-01\tchose X\tbecause Y\n");
+
+  // Force the lease into the past (as ledger-lease.test.ts does) and reclaim, so a second claim is legal.
+  const claimed = ledger.readTask(repo, id);
+  claimed.lease = { owner: "agent-a", expires_at: new Date(Date.now() - 60_000).toISOString() };
+  ledger.writeTask(repo, MISSION_ID, claimed);
+  ledger.reclaimExpired(repo);
+
+  runCli(["--repo", repo, "task", "claim", id, "--agent", "agent-b"]);
+
+  const decisions = readFileIfExists(path.join(P.runDir(repo, id), "decisions.tsv"));
+  assert.match(decisions ?? "", /chose X/, "claim's scaffold must never overwrite existing run-dir content");
 });
 
 test("a FAIL verdict on a required lens is treated as incomplete evidence for a pass gate", () => {

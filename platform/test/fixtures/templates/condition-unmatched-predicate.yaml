@@ -1,0 +1,27 @@
+# Condition-resolution fixture: a predicate string that is not one of the
+# compiler's mechanically-evaluable forms (compiler.ts step 1c). Mirrors
+# registry/workflows/feature-development.yaml's review-stage predicate,
+# which is a lens lookup, not a skip decision.
+id: condition-unmatched-predicate
+version: 1
+description: Predicate that is not one of the compiler's mechanically-evaluable forms - falls back to owner-style.
+
+entry_conditions:
+  - "mission goal is a small, bounded change"
+
+required_inputs:
+  - "brief.md"
+
+stages:
+  - id: reviewish
+    role: reviewer
+    type: review
+    depends_on: []
+    condition:
+      predicate: "required review lenses = policies/risk.yaml required_review_lenses[task.risk]"
+    outputs: [review-verdict/spec.json]
+
+required_outputs:
+  - review-verdict/spec.json
+
+terminal_condition: "reviewish stage is DONE"

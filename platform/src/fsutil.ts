@@ -109,8 +109,8 @@ export function nowIso(): string {
 /**
  * Copy a directory tree, never overwriting a file that already exists at
  * the destination. Returns the list of relative paths that were skipped
- * because they already existed (DESIGN.md §6 item 9: `agent init` reports
- * skipped files instead of overwriting).
+ * because they already existed (`agent init` in DESIGN.md §6's CLI surface
+ * reports skipped files instead of overwriting).
  */
 export function copyDirNoOverwrite(src: string, dest: string, relBase = ""): string[] {
   const skipped: string[] = [];

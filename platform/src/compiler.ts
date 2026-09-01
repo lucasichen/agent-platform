@@ -129,6 +129,151 @@ function outputsCover(stageOutputs: string[], name: string): boolean {
   return false;
 }
 
+// ------------------------------------------------------- condition resolution
+// roles/F0-workflow-compiler.md step 2: every conditional stage carries
+// either a `predicate` (evaluated mechanically, never guessed) or an
+// `owner` (the stage is always instantiated; the owning role decides at
+// execution time). A `condition` with neither is a template defect and is
+// already rejected by the workflow-template schema's `condition` oneOf
+// (schemaProblems check above runs before any of this).
+
+const RISK_ORDER: RiskLevel[] = ["R0", "R1", "R2", "R3", "R4"];
+
+function riskAtLeast(risk: RiskLevel, threshold: RiskLevel): boolean {
+  return RISK_ORDER.indexOf(risk) >= RISK_ORDER.indexOf(threshold);
+}
+
+/** Same fallback the compiler already uses to stamp task.risk (see the task-construction loop below): mission.constraints.default_risk, else the platform default. */
+function resolveMissionRisk(mission: Mission): RiskLevel {
+  return (mission.constraints?.default_risk as RiskLevel | undefined) ?? DEFAULT_RISK;
+}
+
+/**
+ * `payload.design.decision_refs` (spec §3.2's predicate text) names a
+ * *task* payload field, but conditional stages are resolved at mission
+ * instantiation time, before any task (or its payload) exists. Resolved
+ * ambiguity: the compiler reads the same shape off the mission's own
+ * `constraints.design.decision_refs`, the one place a mission can pin
+ * design authority ahead of decomposition. A mission that does not supply
+ * it is, correctly, "absent" — the predicate's decision_refs clause is
+ * then true and the stage is not skipped on that clause alone.
+ */
+function missionDecisionRefs(mission: Mission): string[] {
+  const constraints = mission.constraints as Record<string, unknown> | undefined;
+  const design = constraints?.design as { decision_refs?: unknown } | undefined;
+  const refs = design?.decision_refs;
+  return Array.isArray(refs) ? refs.filter((r): r is string => typeof r === "string") : [];
+}
+
+type PredicateEval = { matched: true; value: boolean } | { matched: false };
+
+/** One recognized mechanical predicate clause. Anything else is not mechanically evaluable (roles/F0-workflow-compiler.md: "if the predicate cannot be evaluated from data on hand, that is a compiler failure, not a license to guess"). */
+function evalPredicateClause(clause: string, mission: Mission): PredicateEval {
+  const trimmed = clause.trim();
+  const riskMatch = /^task\.risk\s*>=\s*(R[0-4])$/i.exec(trimmed);
+  if (riskMatch) {
+    const threshold = riskMatch[1]!.toUpperCase() as RiskLevel;
+    return { matched: true, value: riskAtLeast(resolveMissionRisk(mission), threshold) };
+  }
+  if (/^payload\.design\.decision_refs\s+is\s+empty\s+or\s+absent$/i.test(trimmed)) {
+    return { matched: true, value: missionDecisionRefs(mission).length === 0 };
+  }
+  return { matched: false };
+}
+
+/**
+ * Clauses combine with OR only (the only combinator the registry's
+ * templates use). Split on the literal uppercase " OR " combinator only
+ * (case-sensitive) — the decision_refs clause's own prose ("is empty or
+ * absent") legitimately contains a lowercase "or" that must not be
+ * mistaken for a clause boundary. The whole predicate is mechanically
+ * evaluable only if every clause is.
+ */
+function evalPredicate(predicate: string, mission: Mission): PredicateEval {
+  const clauses = predicate.split(/\s+OR\s+/);
+  const evals = clauses.map((c) => evalPredicateClause(c, mission));
+  if (evals.some((e) => !e.matched)) return { matched: false };
+  return { matched: true, value: evals.some((e) => e.matched && e.value) };
+}
+
+interface ConditionResolution {
+  /** false only for a mechanically-evaluated predicate that resolved to false: the stage is skipped, no task is created for it. */
+  included: boolean;
+  /** Set for owner-style stages (explicit `owner:`, or a predicate the compiler could not mechanically evaluate) — recorded into the task's payload for visibility (roles/F0-workflow-compiler.md step 2). */
+  conditionOwner?: string;
+  /** Human-readable note surfaced in CompileResult.notes, never silently swallowed. */
+  note?: string;
+}
+
+/**
+ * Resolves every stage's `condition` per roles/F0-workflow-compiler.md
+ * step 2. Called only after schema validation, so every `condition` is
+ * either `{predicate}` or `{owner}` (never neither/both).
+ */
+function resolveStageConditions(stages: WorkflowTemplateStage[], mission: Mission): { resolutions: Map<string, ConditionResolution>; notes: string[] } {
+  const resolutions = new Map<string, ConditionResolution>();
+  const notes: string[] = [];
+  for (const stage of stages) {
+    if (!stage.condition) {
+      resolutions.set(stage.id, { included: true });
+      continue;
+    }
+    if ("owner" in stage.condition) {
+      resolutions.set(stage.id, { included: true, conditionOwner: stage.condition.owner });
+      continue;
+    }
+    const evalResult = evalPredicate(stage.condition.predicate, mission);
+    if (evalResult.matched) {
+      resolutions.set(stage.id, { included: evalResult.value });
+      continue;
+    }
+    // Rule (c): a predicate string that does not match a supported
+    // mechanical form is treated as owner-style — instantiated, never
+    // guessed — with the stage's own role deciding at runtime, and a note
+    // surfaced so this is visible rather than silent.
+    const fallbackOwner = stage.role ?? CHILD_MISSION_ROLE;
+    const note =
+      `stage '${stage.id}': predicate '${stage.condition.predicate}' is not one of the compiler's mechanically-evaluable forms ` +
+      `(risk comparison, decision_refs presence); treated as owner-style and instantiated for role '${fallbackOwner}' to decide at runtime ` +
+      `(roles/F0-workflow-compiler.md: never guess a predicate the compiler cannot evaluate).`;
+    notes.push(note);
+    resolutions.set(stage.id, { included: true, conditionOwner: fallbackOwner, note });
+  }
+  return { resolutions, notes };
+}
+
+/**
+ * Returns a function resolving each stage id to its *effective*
+ * dependencies: a skipped stage is transparently replaced by its own
+ * dependencies (recursively), so a dependent stage re-points around it
+ * (roles/F0-workflow-compiler.md step 2 / spec §3.2 conditional stages).
+ * Operates on the original template graph, already proven acyclic.
+ */
+function computeEffectiveDeps(stages: WorkflowTemplateStage[], resolutions: Map<string, ConditionResolution>): (stageId: string) => string[] {
+  const byId = new Map(stages.map((s) => [s.id, s] as const));
+  const cache = new Map<string, string[]>();
+
+  function resolve(stageId: string, seen: Set<string>): string[] {
+    const cached = cache.get(stageId);
+    if (cached) return cached;
+    if (seen.has(stageId)) return []; // defensive; the graph is already validated acyclic
+    seen.add(stageId);
+    const rawDeps = byId.get(stageId)?.depends_on ?? [];
+    const out: string[] = [];
+    for (const dep of rawDeps) {
+      const depIncluded = resolutions.get(dep)?.included ?? true;
+      const chain = depIncluded ? [dep] : resolve(dep, seen);
+      for (const id of chain) {
+        if (!out.includes(id)) out.push(id);
+      }
+    }
+    cache.set(stageId, out);
+    return out;
+  }
+
+  return (stageId: string) => resolve(stageId, new Set());
+}
+
 interface ResolvedInput {
   ref: TaskInputRef;
   problem?: string;
@@ -156,6 +301,8 @@ export interface CompileResult {
   workflowInstance: WorkflowInstance;
   tasks: Task[];
   templateSource: string;
+  /** Non-fatal compiler notes, e.g. an owner-style fallback for a predicate the compiler could not mechanically evaluate (roles/F0-workflow-compiler.md step 2). Never silent. */
+  notes: string[];
 }
 
 /**
@@ -259,13 +406,25 @@ export function instantiateWorkflow(repo: string, missionId: string, _opts: Comp
   const stageTaskId = (stage: WorkflowTemplateStage) => `${missionId}-${stage.id}`.toUpperCase();
   const entryInputs: TaskInputRef[] = missionInputResolutions.map((m) => m.resolved.ref);
 
+  // Resolve every stage's `condition` (roles/F0-workflow-compiler.md step
+  // 2): a mechanically-false predicate skips the stage entirely (no task
+  // is created for it, and dependents re-point around it to its own
+  // dependencies); an owner-style stage (explicit `owner:`, or a predicate
+  // the compiler cannot mechanically evaluate) is always instantiated.
+  const { resolutions: conditionResolutions, notes: conditionNotes } = resolveStageConditions(stages, mission);
+  const effectiveDepsFor = computeEffectiveDeps(stages, conditionResolutions);
+  const missionRisk = resolveMissionRisk(mission);
+
   const instanceStages: WorkflowInstanceStage[] = [];
   const tasks: Task[] = [];
   const stageCount = stages.length || 1;
   const perTaskDollars = Math.max(0.01, Math.round((mission.budget.dollars / stageCount) * 100) / 100);
 
   for (const stage of stages) {
-    const deps = stage.depends_on ?? [];
+    const resolution = conditionResolutions.get(stage.id)!;
+    if (!resolution.included) continue; // skipped: no task; dependents already re-point via effectiveDepsFor
+
+    const deps = effectiveDepsFor(stage.id);
     const inputs: TaskInputRef[] =
       deps.length === 0
         ? entryInputs
@@ -282,13 +441,21 @@ export function instantiateWorkflow(repo: string, missionId: string, _opts: Comp
       id: stage.id,
       role: stage.role,
       type: stage.type,
-      depends_on: stage.depends_on,
+      depends_on: deps,
       inputs,
       outputs: stage.outputs,
       human_gate: stage.human_gate,
       gated_by: stage.gated_by,
     };
     instanceStages.push(instanceStage);
+
+    const payload: Record<string, unknown> =
+      stage.type === "implementation"
+        ? { areas: [], design: { authority: role }, acceptance: [], verification: [] }
+        : {};
+    // Owner-style stage (spec §3.2 step 2b): the compiler does not resolve
+    // the judgment call itself; it records who owns it so it stays visible.
+    if (resolution.conditionOwner) payload.condition_owner = resolution.conditionOwner;
 
     const task: Task = {
       id: stageTaskId(stage),
@@ -303,15 +470,13 @@ export function instantiateWorkflow(repo: string, missionId: string, _opts: Comp
       // ambiguity: fall back to mission.constraints.default_risk, else a
       // conservative platform default (R2); a real deployment has the
       // task-decomposer/architect role stamp risk per task before/at
-      // decomposition.
-      risk: (mission.constraints?.default_risk as RiskLevel | undefined) ?? DEFAULT_RISK,
+      // decomposition. Same resolution used to mechanically evaluate any
+      // risk-comparison predicate above (resolveMissionRisk).
+      risk: missionRisk,
       inputs,
       outputs: stage.outputs ?? [],
       budget: { attempts: DEFAULT_TASK_ATTEMPTS, dollars: perTaskDollars },
-      payload:
-        stage.type === "implementation"
-          ? { areas: [], design: { authority: role }, acceptance: [], verification: [] }
-          : {},
+      payload,
       status,
       blocked_reason: status === "BLOCKED" ? "dependencies-not-satisfied" : undefined,
       lease: null,
@@ -341,5 +506,5 @@ export function instantiateWorkflow(repo: string, missionId: string, _opts: Comp
     writeMission(repo, { ...mission, status: "ACTIVE" });
   }
 
-  return { workflowInstance, tasks, templateSource: source };
+  return { workflowInstance, tasks, templateSource: source, notes: conditionNotes };
 }

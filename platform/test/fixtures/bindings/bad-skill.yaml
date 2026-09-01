@@ -1,0 +1,12 @@
+version: 1
+roles:
+  worker:
+    startup_skills:
+      - skills/worker-startup
+    skills:
+      generic:
+        - skills/vendor/badpack/skills/broken-skill
+      claude-code:
+        - skills/vendor/badpack/skills/broken-skill
+      cursor: []
+active_harness: claude-code

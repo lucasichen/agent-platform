@@ -76,7 +76,9 @@ for a full worked scenario.
 
 Every request/response in a scenario (`request`, `read_after_write`,
 `authz`, each `idempotency` repetition) is logged — method, URL, status,
-duration, and body — to `logs/<scenario>.json`, referenced from
+duration, and body — to `logs/<scenario>-attempt<N>.json` (`N` is `1`,
+or `1` and `2` if the retry-once flake policy fired — see
+`../lib/checks.mjs` and `../README.md` "Flake control"), referenced from
 `verification/result.json`. Backend service logs are captured for the
 whole run at `logs/<service-name>.log`.
 

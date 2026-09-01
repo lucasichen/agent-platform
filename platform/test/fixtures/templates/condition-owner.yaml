@@ -1,0 +1,25 @@
+# Condition-resolution fixture: an owner-style stage (compiler.ts step 1b).
+# Always instantiated; the owning role decides at execution time.
+id: condition-owner
+version: 1
+description: Owner-conditional stage for compiler condition-resolution tests.
+
+entry_conditions:
+  - "mission goal is a small, bounded change"
+
+required_inputs:
+  - "brief.md"
+
+stages:
+  - id: plan
+    role: specifier
+    type: specification
+    depends_on: []
+    condition:
+      owner: specifier
+    outputs: [project-spec]
+
+required_outputs:
+  - project-spec
+
+terminal_condition: "plan stage is DONE"

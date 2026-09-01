@@ -95,9 +95,8 @@ run's `.agent/runs/<TASK-ID>/memory-candidates.jsonl`. Never write
 tier-gated approval (verifier for operational facts, domain/spec
 authority for domain facts, design authority for architecture facts),
 never by a worker's own hand. Full lifecycle — candidate to proposal to
-approved entry, staleness, expiry — is `docs/memory.md` (the CLI in
-§3 is landing in the current build wave; a missing `agent memory`
-command today is not a documentation error).
+approved entry, staleness, expiry — is `docs/memory.md` (the `agent
+memory propose/list/show/approve/reject/expire` CLI in §3 ships today).
 
 ## Core rules
 

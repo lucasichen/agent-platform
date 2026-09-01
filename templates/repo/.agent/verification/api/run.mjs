@@ -26,7 +26,7 @@
 //
 // Exit code 0 if every check PASSes, 1 if any check FAILs or setup fails.
 
-import { resolve, join } from 'node:path';
+import { resolve, join, dirname, basename } from 'node:path';
 import { existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 
@@ -56,10 +56,20 @@ async function main() {
   info(`evidence out: ${outDir}`);
 
   const repoYaml = await loadRepoYaml(repoRoot);
-  const scenariosDir = join(repoRoot, '.agent', 'verification', 'api');
+  // --scenarios overrides the default `.agent/verification/api/scenarios.yaml`
+  // location — resolved relative to cwd (like every other path-valued flag
+  // here), not --repo-root, so `--scenarios ./fixtures/scenarios.yaml` means
+  // what it looks like from wherever you invoked the command.
+  let scenariosDir = join(repoRoot, '.agent', 'verification', 'api');
+  let scenariosPrimaryName = 'scenarios.yaml';
+  if (args.scenarios) {
+    const resolvedScenarios = resolve(String(args.scenarios));
+    scenariosDir = dirname(resolvedScenarios);
+    scenariosPrimaryName = basename(resolvedScenarios);
+  }
   const { path: scenariosPath, config: scenariosConfig } = await loadConfigWithFallback({
     dir: scenariosDir,
-    primaryName: 'scenarios.yaml',
+    primaryName: scenariosPrimaryName,
     exampleName: 'scenarios.example.yaml',
     kind: 'API scenarios (spec §9.2)',
   });
@@ -122,7 +132,7 @@ async function main() {
       // eslint-disable-next-line no-await-in-loop -- scenarios may depend on shared server-side state, run sequentially
       const result = await runCheckWithRetry(
         `api:${scenario.name}`,
-        () => runScenario({ baseUrl, scenario, outDir }),
+        (attempt) => runScenario({ baseUrl, scenario, outDir, attempt }),
         quarantineList
       );
       checks.push(result);
@@ -154,11 +164,14 @@ async function main() {
   }
 }
 
-async function runScenario({ baseUrl, scenario, outDir }) {
+async function runScenario({ baseUrl, scenario, outDir, attempt }) {
   const name = slug(scenario.name);
   const log = [];
   const context = {};
-  const evidencePath = `logs/${name}.json`;
+  // Per-attempt evidence path (lib/checks.mjs "Per-attempt evidence"): a
+  // retried scenario must not silently overwrite the failing first
+  // attempt's evidence with the second attempt's.
+  const evidencePath = `logs/${name}-attempt${attempt}.json`;
 
   async function call(reqSpec, label) {
     const path = interpolateTemplate(String(reqSpec.path ?? ''), context);

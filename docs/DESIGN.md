@@ -74,6 +74,7 @@ agent-platform/
         architecture/{system.md,canonical-patterns.md,adr/,design/}
         features/feature-map.yaml
         policies/            # populated from /policies at init
+        workflows/           # populated from registry/workflows/ at init (spec Appendix A)
         verification/README.md
         memory/{index.md,discoveries/,incidents/}
         evals/README.md
@@ -85,6 +86,12 @@ agent-platform/
     src/
     test/
 ```
+
+Flagged conflict, resolved in the spec's favor per this document's own
+rule (§1): spec Appendix A's target-repo scaffold includes
+`.agent/workflows/`; this document's scaffold listing above now carries
+it too, populated at `agent init` time from `registry/workflows/` rather
+than shipped as static files under `templates/repo/.agent/workflows/`.
 
 ## 3. Canonical data shapes
 
@@ -152,20 +159,32 @@ agent mission list|status <id>
 agent workflow instantiate --mission <id>   # F.0 compiler: template → workflow-instance.yaml + task stubs (BLOCKED/READY)
 agent task list [--state S] [--mission M]
 agent task show <id>
-agent task claim <id> --agent <name> [--ttl <min>]    # READY→ASSIGNED, lease
+agent task claim <id> --agent <name> [--ttl <min>] [--worktree]    # READY→ASSIGNED, lease; scaffolds the run dir; prints startup skills/bindings/memory paths
 agent task start <id>                       # ASSIGNED→RUNNING
 agent task submit <id>                      # RUNNING→GATING or VERIFYING (implementation)
 agent task gate <id> --gate verification|review --result pass|fail [--evidence <file>]
 agent task done <id> / agent task fail <id> --reason ...
 agent task reclaim                          # expire dead leases
 agent route <task-id>                       # print resolved tier/verification/review per risk policy
+agent skills install [--harness <harness>] [--force]        # install bindings.yaml-referenced skills into the harness discovery path
+agent arch check [--diff <ref>] [--json]    # deterministic Layer-1 architecture check against policies/architecture.yaml
 agent evidence init <task-id>               # scaffold run directory
 agent evidence check <task-id>              # completeness check (gates refuse incomplete bundles)
-agent retro create <task-id> --trigger ...  # scaffold retrospective.json
+agent retro create <task-id> --trigger ... [--eval] [--eval-category <c>]  # scaffold retrospective.json; --eval chains agent eval create
+agent eval create --from-retro <id> [--category <c>]   # scaffold a replayable eval case from a task's retrospective
+agent eval list                             # list eval cases under .agent/evals/
+agent memory propose <task-id>              # materialize memory-candidates.jsonl into pending proposals
+agent memory list [--status <s>]            # list proposals + landed entries
+agent memory show <id>                      # show one proposal or entry
+agent memory approve <id> --by <role>       # land a pending proposal (tier-gated)
+agent memory reject <id> --by <role> --reason ...   # decline a pending proposal (tier-gated)
+agent memory expire <id> --by <role> --reason ...   # retire a landed entry (tier-gated)
 agent status                                # mission/fleet dashboard (exception-first, spec §14.5)
 ```
 
 State machine rules enforced, not advisory: illegal transitions rejected; budget.attempts exceeded ⇒ task → BLOCKED with reason `budget-exhausted` (escalation per policy); missing evidence ⇒ gate refuses.
+
+Known inconsistency, candidate for a future normalization pass: `--json` output shapes are per-command, not a shared envelope — each command's JSON is whatever that command's own result type is, not a common `{data, ...}` wrapper.
 
 ## 7. Harness integration principle
 

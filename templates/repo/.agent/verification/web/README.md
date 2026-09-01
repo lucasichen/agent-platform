@@ -67,13 +67,18 @@ something to route around with inline browser scripts in `journeys.yaml`.
 
 | Evidence | Where |
 |---|---|
-| Playwright trace | `trace-<journey>.zip` (screenshots + snapshots + network, open with `npx playwright show-trace`) |
-| Screenshot | `screenshots/<journey>.png` (full page, taken at the end of the journey) |
+| Playwright trace | `trace-<journey>-attempt<N>.zip` (screenshots + snapshots + network, open with `npx playwright show-trace`) |
+| Screenshot | `screenshots/<journey>-attempt<N>.png` (full page, taken at the end of the journey) |
 | DOM assertions | `assert_text`/`assert_url`/`wait_for` steps — failure is the assertion, not a separate artifact |
-| Network requests/responses | `logs/<journey>-network.log` |
-| Browser console | `logs/<journey>-console.log` — any `[error]` line fails the journey |
+| Network requests/responses | `logs/<journey>-attempt<N>-network.log` |
+| Browser console | `logs/<journey>-attempt<N>-console.log` — any `[error]` line fails the journey |
 | Backend logs | `logs/<service-name>.log` — one per `repo.yaml` service, captured for the whole run |
 | Database assertions | not automated generically — add a step or a post-journey check specific to this repo's schema/ORM if a journey needs one |
+
+`N` is `1`, or `1` and `2` if the retry-once flake policy fired — see
+`../lib/checks.mjs` and `../README.md` "Flake control". Every file above
+is per-attempt so a retry never silently overwrites the failing first
+attempt's evidence with the second.
 
 Visual verification should combine these deterministic checks with
 semantic visual review only where needed (spec §9.1) — e.g. a human or a

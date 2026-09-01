@@ -90,7 +90,7 @@ must **approve** it before it is trusted differs by tier:
 | Tier | Examples | Proposes | Approves (`--by` role) |
 |---|---|---|---|
 | A — operational facts | build command, third-party quirk, test-environment limitation | Workers | `verifier` |
-| B — domain knowledge | business terminology, state transitions, compatibility rules | Workers/domain roles | `verifier`, `domain-product-clarifier`, or `specifier` |
+| B — domain knowledge | business terminology, state transitions, compatibility rules | Workers/domain roles | `domain-product-clarifier` or `specifier` |
 | C — architecture | ownership, canonical seams, dependency direction, architectural invariants | Workers/architect | `architect` or `design-authority` |
 
 **A normal worker cannot establish architectural truth simply by writing

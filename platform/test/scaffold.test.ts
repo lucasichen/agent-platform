@@ -2,11 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { makeTempRepo } from "./testutil";
+import { makeTempRepo, baseMission, registerMission } from "./testutil";
 import { initRepo } from "../src/scaffold";
-import { agentDir, policiesDirIn } from "../src/paths";
+import { agentDir, policiesDirIn, workflowsDirIn } from "../src/paths";
 import { readYaml } from "../src/fsutil";
 import { validateOrThrow } from "../src/validate";
+import { instantiateWorkflow } from "../src/compiler";
 
 test("init installs the .agent scaffold and default policies", () => {
   const repo = makeTempRepo();
@@ -68,6 +69,52 @@ test("init is idempotent: re-running never overwrites, reports everything as ski
 
   // The local edit must survive: init never overwrites an existing file.
   assert.equal(fs.readFileSync(riskPath, "utf8"), edited);
+});
+
+// Fix 11: `agent init` also populates .agent/workflows/ with the packaged registry templates (spec Appendix A self-describing repos).
+
+test("init populates .agent/workflows/ with the packaged registry templates", () => {
+  const repo = makeTempRepo();
+  const result = initRepo(repo);
+
+  assert.ok(result.workflowsCreated.includes("feature-development.yaml"));
+  assert.ok(result.workflowsCreated.includes("bug-fix.yaml"));
+  assert.ok(result.workflowsCreated.includes("project-definition.yaml"));
+  assert.equal(result.workflowsSkipped.length, 0);
+  assert.ok(fs.existsSync(path.join(workflowsDirIn(repo), "feature-development.yaml")));
+});
+
+test("init's workflow population is idempotent and never overwrites a locally-edited template", () => {
+  const repo = makeTempRepo();
+  initRepo(repo);
+  const localPath = path.join(workflowsDirIn(repo), "feature-development.yaml");
+  const edited = "# locally edited by the operator\nid: feature-development\n";
+  fs.writeFileSync(localPath, edited, "utf8");
+
+  const second = initRepo(repo);
+  assert.ok(second.workflowsSkipped.includes("feature-development.yaml"));
+  assert.ok(!second.workflowsCreated.includes("feature-development.yaml"));
+  assert.equal(fs.readFileSync(localPath, "utf8"), edited);
+});
+
+test("after init, `agent workflow instantiate` resolves feature-development from the repo-local copy", () => {
+  const repo = makeTempRepo();
+  initRepo(repo);
+
+  const mission = baseMission({
+    id: "MISSION-INIT-FD",
+    type: "feature-development",
+    workflow: { id: "feature-development", version: 1 },
+    inputs: [],
+    outputs: ["merged-commit"],
+    human_gates: [],
+    constraints: { default_risk: "R3" },
+  });
+  registerMission(repo, mission);
+
+  const result = instantiateWorkflow(repo, mission.id);
+  assert.equal(result.templateSource, path.join(workflowsDirIn(repo), "feature-development.yaml"));
+  assert.ok(result.tasks.length > 0);
 });
 
 test("init on a repo with only some files present creates the rest and skips the rest", () => {

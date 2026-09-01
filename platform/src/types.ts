@@ -187,12 +187,19 @@ export interface ModelsPolicy {
 export interface VerificationCheck {
   name: string;
   status: "PASS" | "FAIL" | "SKIPPED";
+  /** Relative to this run's verification/ directory (not the run directory itself). */
   evidence: string;
+  /** Spec §9.5 flake policy: written UNCLASSIFIED by the verification harness, reclassified by a human/verifier. */
+  classification?: "PRODUCT FAILURE" | "ENVIRONMENT FAILURE" | "FLAKE" | "UNCLASSIFIED";
+  note?: string;
+  error?: string;
 }
 
 export interface VerificationResult {
-  task: string;
-  commit: string;
+  /** null when the verifier was not given a task id (spec Appendix B example). */
+  task: string | null;
+  /** null when the verified tree is not a git repository. */
+  commit: string | null;
   checks: VerificationCheck[];
   environment: string;
   reproducible_with: string;

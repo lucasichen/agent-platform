@@ -137,6 +137,8 @@ program
       for (const f of result.scaffoldSkipped) console.log(`    skipped (already exists): ${f}`);
       console.log(`  policies: ${result.policiesCreated.length} created, ${result.policiesSkipped.length} skipped`);
       for (const f of result.policiesSkipped) console.log(`    skipped (already exists): ${f}`);
+      console.log(`  workflows: ${result.workflowsCreated.length} created, ${result.workflowsSkipped.length} skipped`);
+      for (const f of result.workflowsSkipped) console.log(`    skipped (already exists): ${f}`);
     })
   );
 
@@ -174,6 +176,45 @@ function defaultValidationTargets(repo: string): string[] {
       }
     }
   }
+
+  // .agent/evals/<category>/<ID>.yaml (spec §13.5).
+  const evalsDir = P.evalsDir(repo);
+  if (fs.existsSync(evalsDir)) {
+    for (const category of fs.readdirSync(evalsDir, { withFileTypes: true })) {
+      if (!category.isDirectory()) continue;
+      const categoryDir = path.join(evalsDir, category.name);
+      for (const name of fs.readdirSync(categoryDir)) {
+        if (name.endsWith(".yaml")) targets.push(path.join(categoryDir, name));
+      }
+    }
+  }
+
+  // .agent/runs/<TASK-ID>/{retrospective.json, cost.json, result.json,
+  // verification/result.json, reviews/*.json} (spec Appendix B). Every
+  // other file under a run dir (transcript.jsonl, decisions.tsv,
+  // diff.patch, transitions.jsonl, task.yaml) has no schema of its own.
+  const runsDir = P.runsRootDir(repo);
+  if (fs.existsSync(runsDir)) {
+    for (const entry of fs.readdirSync(runsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const taskId = entry.name;
+      const retro = P.retrospectiveFile(repo, taskId);
+      if (fs.existsSync(retro)) targets.push(retro);
+      const cost = P.costFile(repo, taskId);
+      if (fs.existsSync(cost)) targets.push(cost);
+      const result = P.resultFile(repo, taskId);
+      if (fs.existsSync(result)) targets.push(result);
+      const verificationResult = P.verificationResultFile(repo, taskId);
+      if (fs.existsSync(verificationResult)) targets.push(verificationResult);
+      const reviewsDir = path.join(P.runDir(repo, taskId), "reviews");
+      if (fs.existsSync(reviewsDir)) {
+        for (const name of fs.readdirSync(reviewsDir)) {
+          if (name.endsWith(".json")) targets.push(path.join(reviewsDir, name));
+        }
+      }
+    }
+  }
+
   return targets;
 }
 
@@ -257,6 +298,7 @@ missionCmd
       if (ledger.missionExists(repo, mission.id)) {
         throw new LedgerError(`Mission '${mission.id}' already exists. Edit it directly under ${P.missionDir(repo, mission.id)}.`);
       }
+      ledger.assertChildMissionBudget(repo, mission);
       ledger.writeMission(repo, mission);
       console.log(`Registered mission '${mission.id}' at ${P.missionFile(repo, mission.id)}`);
     })
@@ -328,6 +370,10 @@ workflowCmd
       for (const t of result.tasks) {
         console.log(`  ${t.id}  [${t.status}]  role=${t.role}  type=${t.type}`);
       }
+      if (result.notes.length > 0) {
+        console.log(`${result.notes.length} note(s):`);
+        for (const n of result.notes) console.log(`  - ${n}`);
+      }
     })
   );
 
@@ -389,6 +435,11 @@ taskCmd
         throw new Error(`--ttl must be a positive number of minutes, got '${opts.ttl}'`);
       }
       let task = ledger.claimTask(repo, id, opts.agent, ttlMinutes);
+      // "scaffolded at claim time" (spec Appendix B / F.7): idempotent —
+      // scaffoldRunDir never overwrites a file that already exists, so a
+      // re-claim (after a lease reclaim) never clobbers evidence collected
+      // on a prior attempt.
+      scaffoldRunDir(repo, task);
 
       let workspace: string | undefined;
       if (opts.worktree) {
@@ -577,6 +628,10 @@ skillsCmd
       const missing = result.items.filter((i) => i.status === "missing");
       if (missing.length > 0) {
         console.log(`${missing.length} skill(s) could not be resolved (see 'missing' above) — this is a warning, not a failure.`);
+      }
+      const warnings = result.items.filter((i) => i.status === "warning");
+      if (warnings.length > 0) {
+        console.log(`${warnings.length} skill(s) had malformed SKILL.md frontmatter and were skipped (see 'warning' above) — this is a warning, not a failure.`);
       }
     })
   );
@@ -847,7 +902,10 @@ memoryCmd
         return;
       }
       for (const i of items) {
-        console.log(`${i.id}  [${i.status}]  tier=${i.tier}  areas=${i.areas.join(",")}  ${i.claim}`);
+        // Both ids are accepted by approve/reject/expire (resolve like `memory show`
+        // does) — shown together so it's never ambiguous which one to pass.
+        const idDisplay = i.fileStem ? `${i.id}  (file id: ${i.fileStem})` : i.id;
+        console.log(`${idDisplay}  [${i.status}]  tier=${i.tier}  areas=${i.areas.join(",")}  ${i.claim}`);
       }
     })
   );

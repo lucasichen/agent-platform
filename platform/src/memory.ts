@@ -51,13 +51,13 @@ export const TIER_DEFAULT_OWNER: Record<MemoryTier, string> = {
 
 // Tier authority table (spec §12.2, memory/README.md). --by is shape-checked
 // free text, process discipline not cryptography (docs/memory.md §3, same
-// trust model as `agent task gate`). Tier B deliberately also accepts
-// 'verifier' alongside the domain/spec authority roles per this build's
-// brief (see report: "tier gate ... B -> accept role strings
-// verifier|domain-product-clarifier|specifier").
+// trust model as `agent task gate`). Tier A: verifier fleet. Tier B: domain
+// knowledge, approved by the domain/spec authority roles (verifier is NOT a
+// Tier B approver — spec §12.2's authority table binds Tier B to
+// domain-product-clarifier/specifier only). Tier C: design authority.
 const TIER_APPROVERS: Record<MemoryTier, ReadonlySet<string>> = {
   A: new Set(["verifier"]),
-  B: new Set(["verifier", "domain-product-clarifier", "specifier"]),
+  B: new Set(["domain-product-clarifier", "specifier"]),
   C: new Set(["architect", "design-authority"]),
 };
 
@@ -441,12 +441,23 @@ export interface MemoryListItem {
   claim: string;
   source_task: string;
   file: string;
+  /**
+   * For a pending/rejected proposal (one entry per file, named
+   * `<TASK-ID>-<NN>.md`): the alternate id `agent memory
+   * approve`/`reject`/`expire` also accepts, when it differs from the
+   * frontmatter `id` shown above (docs/memory.md §3) — both resolve to the
+   * same file, the same way `agent memory show` already does. Undefined
+   * for landed/expired entries, whose file carries no separate per-entry
+   * stem (a topic file may hold several entries).
+   */
+  fileStem?: string;
 }
 
 export function listMemoryItems(repo: string, statusFilter?: MemoryStatus): MemoryListItem[] {
   const items: MemoryListItem[] = [];
-  const collect = (filePath: string) => {
+  const collect = (filePath: string, hasFileStem: boolean) => {
     const { blocks } = parseMemoryFileWithPreamble(readFileIfExists(filePath) ?? "");
+    const stem = path.basename(filePath, ".md");
     for (const b of blocks) {
       items.push({
         id: b.frontmatter.id,
@@ -456,15 +467,16 @@ export function listMemoryItems(repo: string, statusFilter?: MemoryStatus): Memo
         claim: firstHeadingText(b.body),
         source_task: b.frontmatter.source_task,
         file: relPath(repo, filePath),
+        fileStem: hasFileStem && stem !== b.frontmatter.id ? stem : undefined,
       });
     }
   };
-  for (const f of listMdFiles(P.memoryProposalsDir(repo))) collect(f);
-  for (const f of listMdFiles(P.memoryRejectedDir(repo))) collect(f);
-  for (const f of listTopicFiles(repo)) collect(f);
-  for (const f of listMdFiles(P.memoryDiscoveriesDir(repo))) collect(f);
-  for (const f of listMdFiles(P.memoryIncidentsDir(repo))) collect(f);
-  for (const f of listMdFiles(P.memoryExpiredDir(repo))) collect(f);
+  for (const f of listMdFiles(P.memoryProposalsDir(repo))) collect(f, true);
+  for (const f of listMdFiles(P.memoryRejectedDir(repo))) collect(f, true);
+  for (const f of listTopicFiles(repo)) collect(f, false);
+  for (const f of listMdFiles(P.memoryDiscoveriesDir(repo))) collect(f, false);
+  for (const f of listMdFiles(P.memoryIncidentsDir(repo))) collect(f, false);
+  for (const f of listMdFiles(P.memoryExpiredDir(repo))) collect(f, false);
   const filtered = statusFilter ? items.filter((i) => i.status === statusFilter) : items;
   filtered.sort((a, b) => a.id.localeCompare(b.id));
   return filtered;
@@ -516,14 +528,34 @@ export interface MemoryActionResult {
 }
 
 /**
+ * A pending proposal's file is named `<TASK-ID>-<NN>.md` but `agent memory
+ * list`/`show` display the block's frontmatter `id` (MEM-...), which is
+ * usually a different string. Resolves either form to the actual filename
+ * stem under proposals/ — mirrors findMemoryItem's dual resolution, so
+ * approve/reject accept exactly the id `list` shows, not just the one it
+ * doesn't.
+ */
+function resolveProposalStem(repo: string, id: string): string | undefined {
+  if (fs.existsSync(P.memoryProposalFile(repo, id))) return id;
+  for (const f of listMdFiles(P.memoryProposalsDir(repo))) {
+    const { blocks } = parseMemoryFileWithPreamble(readFileIfExists(f) ?? "");
+    if (blocks.some((b) => b.frontmatter.id === id)) return path.basename(f, ".md");
+  }
+  return undefined;
+}
+
+/**
  * Lands a pending proposal into its matching topic file (first area wins),
  * creating the topic file (+ an index.md row) if it's new, then deletes
  * the proposal (docs/memory.md §3). Topic-append is this build's one
  * consistent landing behavior — see report for the discoveries/ alternative
- * considered and why topic-append was chosen.
+ * considered and why topic-append was chosen. Accepts either the proposal's
+ * filename stem (`<TASK-ID>-<NN>`) or its frontmatter id (MEM-...) — the id
+ * `agent memory list`/`show` display.
  */
 export function approveProposal(repo: string, id: string, role: string): MemoryActionResult {
-  const proposalPath = P.memoryProposalFile(repo, id);
+  const stem = resolveProposalStem(repo, id) ?? id;
+  const proposalPath = P.memoryProposalFile(repo, stem);
   if (!fs.existsSync(proposalPath)) {
     throw new MemoryError(`No pending proposal '${id}' found at ${proposalPath}.`);
   }
@@ -549,9 +581,10 @@ export function approveProposal(repo: string, id: string, role: string): MemoryA
   });
 }
 
-/** Moves a pending proposal to proposals/rejected/ with the reason preserved in frontmatter — never silently deleted (docs/memory.md §3). */
+/** Moves a pending proposal to proposals/rejected/ with the reason preserved in frontmatter — never silently deleted (docs/memory.md §3). Accepts either the proposal's filename stem (`<TASK-ID>-<NN>`) or its frontmatter id (MEM-...). */
 export function rejectProposal(repo: string, id: string, role: string, reason: string): MemoryActionResult {
-  const proposalPath = P.memoryProposalFile(repo, id);
+  const stem = resolveProposalStem(repo, id) ?? id;
+  const proposalPath = P.memoryProposalFile(repo, stem);
   if (!fs.existsSync(proposalPath)) {
     throw new MemoryError(`No pending proposal '${id}' found at ${proposalPath}.`);
   }
@@ -562,11 +595,11 @@ export function rejectProposal(repo: string, id: string, role: string, reason: s
 
   return withMemoryLock(repo, () => {
     const rejectedFm: MemoryFrontmatter = { ...block.frontmatter, status: "rejected", reason };
-    const destPath = P.memoryRejectedFile(repo, id);
+    const destPath = P.memoryRejectedFile(repo, stem);
     ensureDir(path.dirname(destPath));
     writeFileAtomic(destPath, serializeBlock(rejectedFm, block.body));
     fs.unlinkSync(proposalPath);
-    return { id, status: "rejected", file: relPath(repo, destPath) };
+    return { id: block.frontmatter.id, status: "rejected", file: relPath(repo, destPath) };
   });
 }
 
@@ -593,7 +626,13 @@ function findActiveEntryLocation(repo: string, id: string): ActiveLocation | und
   return undefined;
 }
 
-/** Retires a landed entry to expired/, preserving superseded_by and adding the reason (docs/memory.md §3, spec §12.4 supersession over deletion). */
+/**
+ * Retires a landed entry to expired/, preserving superseded_by and adding
+ * the reason (docs/memory.md §3, spec §12.4 supersession over deletion).
+ * Takes the frontmatter id (MEM-...) — the only id `agent memory list`
+ * shows for a landed entry, since (unlike a pending proposal) it has no
+ * separate per-entry filename stem: a topic file may hold several entries.
+ */
 export function expireEntry(repo: string, id: string, role: string, reason: string): MemoryActionResult {
   const found = findActiveEntryLocation(repo, id);
   if (!found) throw new MemoryError(`No active memory entry '${id}' found under ${P.memoryDir(repo)}.`);

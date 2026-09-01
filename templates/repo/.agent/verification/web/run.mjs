@@ -27,7 +27,7 @@
 // Exit code 0 if every check PASSes (or none were defined to run — see
 // README "Empty scaffold" note), 1 if any check FAILs or setup fails.
 
-import { resolve, join } from 'node:path';
+import { resolve, join, dirname, basename } from 'node:path';
 import { existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 
@@ -57,10 +57,20 @@ async function main() {
   info(`evidence out: ${outDir}`);
 
   const repoYaml = await loadRepoYaml(repoRoot);
-  const journeysDir = join(repoRoot, '.agent', 'verification', 'web');
+  // --journeys overrides the default `.agent/verification/web/journeys.yaml`
+  // location — resolved relative to cwd (like every other path-valued flag
+  // here), not --repo-root, so `--journeys ./fixtures/journeys.yaml` means
+  // what it looks like from wherever you invoked the command.
+  let journeysDir = join(repoRoot, '.agent', 'verification', 'web');
+  let journeysPrimaryName = 'journeys.yaml';
+  if (args.journeys) {
+    const resolvedJourneys = resolve(String(args.journeys));
+    journeysDir = dirname(resolvedJourneys);
+    journeysPrimaryName = basename(resolvedJourneys);
+  }
   const { path: journeysPath, config: journeysConfig } = await loadConfigWithFallback({
     dir: journeysDir,
-    primaryName: 'journeys.yaml',
+    primaryName: journeysPrimaryName,
     exampleName: 'journeys.example.yaml',
     kind: 'browser journeys (spec §9.1)',
   });
@@ -134,7 +144,7 @@ async function main() {
         // eslint-disable-next-line no-await-in-loop -- journeys share one browser instance, run sequentially
         const result = await runCheckWithRetry(
           `web:${journey.name}`,
-          () => runJourney({ browser, baseUrl, journey, outDir }),
+          (attempt) => runJourney({ browser, baseUrl, journey, outDir, attempt }),
           quarantineList
         );
         checks.push(result);
@@ -169,9 +179,13 @@ async function main() {
   }
 }
 
-async function runJourney({ browser, baseUrl, journey, outDir }) {
+async function runJourney({ browser, baseUrl, journey, outDir, attempt }) {
   const page = await browser.newPage();
-  const name = slug(journey.name);
+  // Per-attempt evidence (lib/checks.mjs "Per-attempt evidence"): every
+  // file this journey writes is suffixed with the attempt number, so a
+  // retry never silently overwrites the first (possibly failing)
+  // attempt's screenshot/trace/console/network evidence.
+  const name = `${slug(journey.name)}-attempt${attempt}`;
   const consoleLines = [];
   const networkLines = [];
   page.on('console', (msg) => consoleLines.push(`[${msg.type()}] ${msg.text()}`));

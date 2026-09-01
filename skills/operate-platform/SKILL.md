@@ -99,13 +99,13 @@ print the harness-neutral trigger every agent should see:
 
 ```text
 Required before work begins:
-  skills/worker-startup
+  - skills/worker-startup
 Recommended skills (claude-code):
-  skills/vendor/superpowers/skills/test-driven-development
-  skills/vendor/pstack/skills/poteto-mode
+  - skills/vendor/superpowers/skills/test-driven-development
+  - skills/vendor/pstack/skills/poteto-mode
 Related memory:
-  .agent/memory/index.md
-  .agent/memory/auth.md
+  - .agent/memory/index.md
+  - .agent/memory/auth.md
 ```
 
 (`--json` includes the same data as `{startup_skills: [], skills: [],
@@ -141,8 +141,9 @@ agent task start <TASK-ID>          # ASSIGNED -> RUNNING
 Do the bounded work per the role contract the task names (`roles/F<N>-*
 .md`) — plus, for `worker`-role implementation/bug-fix tasks,
 `skills/worker-startup`'s preconditions and evidence duties. Leave the
-full evidence bundle in `.agent/runs/<TASK-ID>/` as you go (scaffolded at
-claim time by `agent evidence init <TASK-ID>` if it wasn't already) —
+full evidence bundle in `.agent/runs/<TASK-ID>/` as you go (`agent task
+claim` scaffolds the run directory automatically; `agent evidence init
+<TASK-ID>` remains available to (re)scaffold it manually) —
 `docs/evidence-contract.md` is the normative shape:
 `decisions.tsv`, `diff.patch` (implementation tasks), `cost.json`, local
 verification results, `transcript.jsonl`.

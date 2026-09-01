@@ -154,8 +154,8 @@ defines:
   "task": "ACCOUNT-12",
   "commit": "42f81c9",
   "checks": [
-    { "name": "web:sign-up-and-create-project", "status": "PASS", "evidence": "screenshots/sign-up-and-create-project.png, trace-sign-up-and-create-project.zip, logs/sign-up-and-create-project-console.log" },
-    { "name": "api:create-account", "status": "FAIL", "evidence": "logs/create-account.json", "error": "read_after_write: expected status 200, got 500", "classification": "UNCLASSIFIED", "note": "failed consistently across both attempts — verifier must classify PRODUCT FAILURE | ENVIRONMENT FAILURE | FLAKE before this enters the learning loop (spec §9.5)" }
+    { "name": "web:sign-up-and-create-project", "status": "PASS", "evidence": "screenshots/sign-up-and-create-project-attempt1.png, trace-sign-up-and-create-project-attempt1.zip, logs/sign-up-and-create-project-attempt1-console.log" },
+    { "name": "api:create-account", "status": "FAIL", "evidence": "logs/create-account-attempt1.json, logs/create-account-attempt2.json", "error": "read_after_write: expected status 200, got 500", "classification": "UNCLASSIFIED", "note": "failed consistently across both attempts (evidence lists attempt 1 then attempt 2) — verifier must classify PRODUCT FAILURE | ENVIRONMENT FAILURE | FLAKE before this enters the learning loop (spec §9.5)" }
   ],
   "environment": "local processes: api, portal",
   "reproducible_with": "node .agent/verification/api/run.mjs --out .agent/runs/ACCOUNT-12/verification --task ACCOUNT-12"
@@ -168,6 +168,17 @@ file(s) under `<out>/` that back it — `lib/evidence.mjs`
 mechanically enforcing "**PASS without evidence is FAIL**"
 (`docs/evidence-contract.md`) at the point evidence is produced, not
 just at review time.
+
+**Per-attempt evidence naming**: every file `web/run.mjs`/`api/run.mjs`
+write is suffixed `-attempt1`/`-attempt2` (e.g.
+`logs/create-account-attempt1.json`) — see `lib/checks.mjs`
+`runCheckWithRetry`'s header comment. This exists so a retried check's
+evidence never silently overwrites the failing first attempt with the
+second: when a check FAILs, `evidence` lists both attempts'
+files, in order, so a human reading `result.json` can see the full
+retry history rather than just whichever attempt happened to run last.
+A check that PASSes on its first attempt still carries the `-attempt1`
+suffix, for one consistent naming scheme rather than two.
 
 **Task-run wiring**: `--out` should point at
 `.agent/runs/<TASK-ID>/verification/` so the run lands exactly where

@@ -6,12 +6,12 @@
   "type": "object",
   "properties": {
     "task": {
-      "type": "string",
-      "description": "Task id this verification run belongs to."
+      "type": ["string", "null"],
+      "description": "Task id this verification run belongs to. null when the verifier was not given one (spec Appendix B example; the shipped .agent/verification/lib/evidence.mjs writes `task ?? null`)."
     },
     "commit": {
-      "type": "string",
-      "description": "Commit hash of the verified candidate."
+      "type": ["string", "null"],
+      "description": "Commit hash of the verified candidate. null when the verified tree is not a git repository (the shipped .agent/verification/lib/evidence.mjs writes `commit ?? null`)."
     },
     "checks": {
       "type": "array",
@@ -24,11 +24,24 @@
           "status": {
             "type": "string",
             "enum": ["PASS", "FAIL", "SKIPPED"],
-            "description": "Per §9.5 every verifier failure is additionally classified as PRODUCT FAILURE, ENVIRONMENT FAILURE, or FLAKE before entering the learning loop; that classification is recorded in the retrospective, not here."
+            "description": "Per §9.5 every verifier failure is additionally classified as PRODUCT FAILURE, ENVIRONMENT FAILURE, or FLAKE before entering the learning loop; that classification may be recorded here (see `classification`) as well as in the retrospective."
           },
           "evidence": {
             "type": "string",
-            "description": "Path (relative to the run directory) to the evidence artifact for this check, e.g. api.json or logs/db.log."
+            "description": "Path (relative to this run's verification/ directory, e.g. .agent/runs/<TASK-ID>/verification/) to the evidence artifact for this check, e.g. api.json or logs/db.log."
+          },
+          "classification": {
+            "type": "string",
+            "enum": ["PRODUCT FAILURE", "ENVIRONMENT FAILURE", "FLAKE", "UNCLASSIFIED"],
+            "description": "Spec §9.5 flake policy: a FAIL is written UNCLASSIFIED by the verification harness (.agent/verification/lib/checks.mjs runCheckWithRetry, retry-once-then-quarantine) and reclassified by a human/verifier before it enters the learning loop."
+          },
+          "note": {
+            "type": "string",
+            "description": "Free-text context for the human/verifier, e.g. retry history across the two flake-policy attempts (spec §9.5)."
+          },
+          "error": {
+            "type": "string",
+            "description": "Error detail for a FAIL check, e.g. an assertion message or stack trace excerpt."
           }
         },
         "required": ["name", "status", "evidence"],

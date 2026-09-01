@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform.local/schemas/memory-entry.schema.json",
+  "title": "Memory Entry",
+  "description": "Frontmatter shape for a Field Guide memory entry (docs/memory.md §2, spec §12.1/§12.2/§12.4). One format for a proposal (.agent/memory/proposals/<TASK-ID>-<NN>.md), a standalone discovery/incident file, and a block appended inside a topic file (.agent/memory/<topic>.md). This schema validates only the YAML frontmatter; the markdown body below it (`## <claim>` heading + prose) is not schema-checked. Owner: per-tier approving role (spec §12.2) — Tier A: verifier fleet, Tier B: domain/spec authority, Tier C: design authority. Staleness trigger: `verified` older than `staleness_bound_days` (tier defaults A=60, B=90, C=180), or any `refs[]` entry that no longer resolves — `agent validate` flags both as `status: needs-reverification`, never auto-deletes (spec §12.4).",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^MEM-[A-Z0-9-]+$",
+      "description": "Stable entry id, e.g. MEM-AUTH-014. Kept permissive (any uppercase-kebab suffix after 'MEM-') rather than enforcing the illustrative MEM-<AREA>-<NNN> shape literally, since ids are also generated deterministically at proposal time from area + source task (docs/memory.md §2)."
+    },
+    "tier": {
+      "type": "string",
+      "enum": ["A", "B", "C"],
+      "description": "A = operational fact (verifier approves). B = domain knowledge (domain/spec authority approves). C = architecture (design authority approves). spec §12.2."
+    },
+    "areas": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+      },
+      "description": "Kebab-case codebase areas, joined against task payload.areas for recall (docs/memory.md §3 Recall)."
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Owning role (tier default, overridable), e.g. verifier-fleet, domain-authority, design-authority (spec §12.4 'Owner: a role, not a person')."
+    },
+    "proposed_by": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Role/agent that proposed the candidate fact (Layer 1, docs/memory.md)."
+    },
+    "approved_by": {
+      "type": ["string", "null"],
+      "description": "Approving role, per the tier authority table. Null while status is pending."
+    },
+    "verified": {
+      "type": "string",
+      "format": "date",
+      "description": "Last attestation date (YYYY-MM-DD) — set at proposal time and refreshed on every approval/re-verification (spec §12.4)."
+    },
+    "staleness_bound_days": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Days after `verified` this entry is treated as needing re-verification. Tier defaults: A=60, B=90, C=180 (docs/memory.md §2), overridable per entry."
+    },
+    "refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Code paths (optionally with a '#anchor' suffix) or commits the claim is anchored to. No refs, no trust (docs/memory.md §2) — minItems 1 is load-bearing."
+    },
+    "superseded_by": {
+      "type": ["string", "null"],
+      "description": "Id of the entry that supersedes this one, once expired. Supersession over deletion (spec §12.4, borrowed from Graphiti's temporal model per docs/memory.md §5)."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "active", "needs-reverification", "rejected", "expired"],
+      "description": "pending = awaiting tier-gated approval. active = landed, trusted. needs-reverification = `agent validate` flagged stale refs/date; treat as a hint, not truth (spec §12.4). rejected = declined at propose time, reason preserved. expired = retired, superseded_by may point at a replacement."
+    },
+    "source_task": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Task id whose run produced the candidate this entry originated from (Layer 1 -> Layer 2, docs/memory.md)."
+    },
+    "reason": {
+      "type": ["string", "null"],
+      "description": "Free-text reason, present on rejected and expired entries (`agent memory reject`/`expire --reason`). Not part of docs/memory.md's illustrative §2 example, which only shows the active-entry shape; added here so reject/expire can preserve their reason in frontmatter per docs/memory.md §3, rather than only in prose."
+    }
+  },
+  "required": [
+    "id",
+    "tier",
+    "areas",
+    "owner",
+    "proposed_by",
+    "approved_by",
+    "verified",
+    "staleness_bound_days",
+    "refs",
+    "superseded_by",
+    "status",
+    "source_task"
+  ],
+  "additionalProperties": false
+}

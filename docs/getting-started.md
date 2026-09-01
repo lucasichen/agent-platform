@@ -79,7 +79,34 @@ agent validate
 to confirm the scaffold and policies are structurally valid before you
 build anything on top of them.
 
-## 3. Author a mission
+## 3. Install skills into your harness
+
+```bash
+agent skills install --harness claude-code|cursor|generic [--repo <path>]
+```
+
+Reads `.agent/policies/bindings.yaml` (installed by `agent init` above,
+falling back to the packaged default) and copies every skill your roles
+are bound to for that harness — the platform's own contract skills
+(`skills/worker-startup`, `skills/operate-platform`) plus pinned MIT
+snapshots of vendored packs under `skills/vendor/` — into your harness's
+discovery path (`.claude/skills/`, Cursor's skills dir). For
+`--harness generic` it instead writes `.agent/skills-index.md` (name,
+description, path table), since a generic harness has no fixed
+discovery directory to copy into; it never edits `AGENTS.md`. Idempotent
+— re-running skips files it already placed and reports what it skipped;
+`--force` overwrites a locally-modified copy.
+
+This step is optional: `agent task claim`/`start` always print the
+resolved skills for a task's role regardless (step 6 below), so nothing
+downstream depends on having run this. It just puts skills where your
+harness auto-discovers them instead of you opening a `SKILL.md` by hand.
+See `skills/README.md` for the three-layer binding model (contract
+skills, vendored packs, optional native installs) this reads, and
+`docs/harness/{cursor,claude-code,generic}.md` for the per-harness
+specifics.
+
+## 4. Author a mission
 
 A mission is the unit of delegated intent — goal, inputs, outputs,
 budget, and which decisions require a human (spec §6.0). Example,
@@ -136,7 +163,7 @@ Register it:
 agent mission create --file .agent/missions/PROJECT-CODING-GRADER/mission.yaml
 ```
 
-## 4. Instantiate the workflow
+## 5. Instantiate the workflow
 
 ```bash
 agent workflow instantiate --mission PROJECT-CODING-GRADER
@@ -157,7 +184,7 @@ agent task list --mission PROJECT-CODING-GRADER
 
 now shows the compiled task DAG.
 
-## 5. Run the loop: claim, start, submit, gate
+## 6. Run the loop: claim, start, submit, gate
 
 Every task names a role contract (`.agent/runs/<TASK-ID>/task.yaml`'s
 `role` field, e.g. `worker`, `verifier`, `reviewer`). Open the matching
@@ -171,7 +198,7 @@ harness.
 ```bash
 agent task list --state READY --mission PROJECT-CODING-GRADER
 
-agent task claim <TASK-ID> --agent <you-or-your-agent-name>   # READY -> ASSIGNED, lease
+agent task claim <TASK-ID> --agent <you-or-your-agent-name> [--ttl <minutes>] [--worktree]
 agent task start <TASK-ID>                                    # ASSIGNED -> RUNNING
 
 # ... the role does its bounded work, per its contract's inputs/outputs/
@@ -179,6 +206,34 @@ agent task start <TASK-ID>                                    # ASSIGNED -> RUNN
 
 agent task submit <TASK-ID>                                   # -> GATING or VERIFYING
 ```
+
+`claim` (`READY -> ASSIGNED`, default lease TTL 60 minutes) does more
+than transition state — it resolves the task's `role` through
+`.agent/policies/bindings.yaml` and prints the harness-neutral trigger
+every agent should read before doing anything else:
+
+```text
+Required before work begins:
+  skills/worker-startup
+Recommended skills (claude-code):
+  skills/vendor/superpowers/skills/test-driven-development
+  skills/vendor/pstack/skills/poteto-mode
+```
+
+plus, once memory recall is live (`docs/memory.md` §3 — landing in the
+current build wave), any memory paths matching the task's
+`payload.areas`. `--json` carries the same data as `{startup_skills:
+[], skills: []}`. A repo with no `bindings.yaml` prints nothing — this
+is optional policy, not a hard dependency, and step 3's `skills install`
+is not required for it to work.
+
+Pass `--worktree` for implementation tasks where filesystem isolation
+helps: on a git repo it creates `.worktrees/<TASK-ID>` on branch
+`task/<TASK-ID>` (reusing the branch if it exists) and records the
+workspace path on the task; it fails clearly on a non-git repo instead
+of silently working in the main tree. Reclaiming the task or reaching a
+terminal state leaves the worktree in place and prints a `git worktree
+remove` hint — cleanup is yours, never automatic.
 
 For implementation tasks the lifecycle specializes (spec §6.3):
 `RUNNING -> VERIFYING -> (fail -> REPAIR -> RUNNING) -> REVIEWING ->
@@ -207,7 +262,7 @@ If a task's lease expires (agent crashed, walked away, whatever),
 If it exhausts `budget.attempts`, it moves to `BLOCKED` with reason
 `budget-exhausted` — check `agent status` (below).
 
-## 6. Evidence bundles
+## 7. Evidence bundles
 
 Every task run leaves a full bundle under `.agent/runs/<TASK-ID>/` —
 transcript, diff, verification results, review verdicts, cost, the final
@@ -221,7 +276,40 @@ role contracts produce them. Read them when you're deciding whether to
 trust a `DONE`, when a task failed and you want to know why, or when
 you're running `agent retro create` to turn a failure into learning.
 
-## 7. Checking in without watching
+## 8. Memory: from candidate to durable fact
+
+(`agent memory ...` is landing in the current build wave — see
+`docs/memory.md` for the full design; a role that hasn't shipped this
+yet in your checkout is expected, not a bug.)
+
+The short version of the loop:
+
+1. Any role, while working a task, appends a fact future agents should
+   know *before* their task starts to
+   `.agent/runs/<TASK-ID>/memory-candidates.jsonl` — distinct from
+   `decisions.tsv` ("why I chose"), this is "what is durably true."
+2. `agent task submit` auto-fires `agent memory propose <task-id>`, so a
+   candidate is never silently lost — each becomes a proposal file under
+   `.agent/memory/proposals/`.
+3. A human or the tier's authority role reviews it:
+
+   ```bash
+   agent memory list [--status pending]
+   agent memory show <proposal-id>
+   agent memory approve <id> --by <role>
+   agent memory reject <id> --by <role> --reason "..."
+   ```
+
+   Tier A (operational) needs verifier approval, Tier B (domain) needs
+   domain/spec authority, Tier C (architecture) needs design authority —
+   a worker cannot establish architectural truth by writing memory. Only
+   approval writes the shared `.agent/memory/{index.md,<topic>.md,...}`
+   files; nothing else does, and never you directly.
+4. `agent task claim` recalls matching entries for a task's
+   `payload.areas` and prints their paths, same as it does for skills
+   (step 6).
+
+## 9. Checking in without watching
 
 ```bash
 agent status
@@ -243,6 +331,10 @@ task transcripts.
   what that means for how you configure a target repo.
 - `docs/evidence-contract.md` — full file-by-file shape of everything a
   task run produces.
+- `skills/README.md` and `docs/integrations.md` — the three-layer skill
+  binding model (contract skills, vendored MIT packs, native installs)
+  behind step 3 and every role's `startup_skills`.
+- `docs/memory.md` — the full memory design behind step 8.
 - `docs/harness/` — the concrete per-harness how-to for wherever you're
   actually running your agents.
 - `AGENTS.md` — hand this (via `CLAUDE.md`'s pointer, or directly) to any

@@ -67,6 +67,32 @@ however that harness spells "system prompt," "custom mode," "rule,"
   "workers do not certify themselves" (spec §2) if the same unmodified
   session is asked to do both.
 
+## Skills
+
+`policies/bindings.yaml` binds each role to skills at three layers
+(`docs/integrations.md` §2) — contract skills, vendored MIT packs, or an
+operator's own native install — but a generic harness needs no new
+mechanism to make skills work: `agent task claim`/`task start`
+(capability 2, run the CLI and read its stdout) print the resolved
+`startup_skills` and recommended skills for the task's role directly, and
+the paths they name are then read like any other file (capability 1).
+That printed output, not a harness-specific skill-discovery directory,
+is the universal trigger every harness sees — skills ride on the same
+two capabilities above, no fourth one needed.
+
+```bash
+agent skills install --harness generic [--repo <path>]
+```
+
+is available for convenience: since a generic harness has no fixed
+directory a skill loader auto-discovers, this writes
+`<repo>/.agent/skills-index.md` — a name/description/path table of
+every skill your bound roles use — instead of copying files anywhere,
+and never edits `AGENTS.md`. It's optional; reading the index or reading
+the paths `task claim` already printed are both just ordinary file
+reads under capability 1, so nothing about skills changes what a
+harness must provide.
+
 ## What a harness is explicitly not required to provide
 
 - A specific model vendor or tier — routing resolves capability tiers

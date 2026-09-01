@@ -167,6 +167,10 @@ to a stronger configuration for root-cause diagnosis, and to the
 architect (F.3) if the pattern suggests the architecture itself, not the
 implementation, is wrong.
 
+When you learn something durably true, append it to
+`.agent/runs/<TASK-ID>/memory-candidates.jsonl` — never write
+`.agent/memory/` directly (docs/memory.md).
+
 ## Done means
 
 Candidate submitted within budget; failing test written before

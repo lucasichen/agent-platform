@@ -24,6 +24,7 @@ export const SCHEMA_FILES: Record<string, string> = {
   "models-policy": "models-policy.schema.json",
   "risk-policy": "risk-policy.schema.json",
   "bindings-policy": "bindings-policy.schema.json",
+  "memory-entry": "memory-entry.schema.json",
 };
 
 let ajv: Ajv2020 | undefined;

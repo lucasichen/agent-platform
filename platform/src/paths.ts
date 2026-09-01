@@ -81,3 +81,60 @@ export function costFile(repo: string, taskId: string): string {
 export function retrospectiveFile(repo: string, taskId: string): string {
   return path.join(runDir(repo, taskId), "retrospective.json");
 }
+
+export function memoryCandidatesFile(repo: string, taskId: string): string {
+  return path.join(runDir(repo, taskId), "memory-candidates.jsonl");
+}
+
+/** Bookkeeping marker so `agent memory propose <task-id>` is idempotent (docs/memory.md §3 "manual re-run, idempotent"). Not a memory entry itself — lives under the task's own run dir, not under memoryDir. */
+export function memoryMaterializedFile(repo: string, taskId: string): string {
+  return path.join(runDir(repo, taskId), "memory-candidates.materialized.json");
+}
+
+export function memoryDir(repo: string): string {
+  return path.join(agentDir(repo), "memory");
+}
+
+export function memoryIndexFile(repo: string): string {
+  return path.join(memoryDir(repo), "index.md");
+}
+
+export function memoryTopicFile(repo: string, area: string): string {
+  return path.join(memoryDir(repo), `${area}.md`);
+}
+
+export function memoryProposalsDir(repo: string): string {
+  return path.join(memoryDir(repo), "proposals");
+}
+
+export function memoryRejectedDir(repo: string): string {
+  return path.join(memoryProposalsDir(repo), "rejected");
+}
+
+export function memoryExpiredDir(repo: string): string {
+  return path.join(memoryDir(repo), "expired");
+}
+
+export function memoryDiscoveriesDir(repo: string): string {
+  return path.join(memoryDir(repo), "discoveries");
+}
+
+export function memoryIncidentsDir(repo: string): string {
+  return path.join(memoryDir(repo), "incidents");
+}
+
+export function memoryLockDir(repo: string): string {
+  return path.join(memoryDir(repo), ".lock");
+}
+
+export function memoryProposalFile(repo: string, id: string): string {
+  return path.join(memoryProposalsDir(repo), `${id}.md`);
+}
+
+export function memoryRejectedFile(repo: string, id: string): string {
+  return path.join(memoryRejectedDir(repo), `${id}.md`);
+}
+
+export function memoryExpiredFile(repo: string, id: string): string {
+  return path.join(memoryExpiredDir(repo), `${id}.md`);
+}

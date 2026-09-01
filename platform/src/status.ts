@@ -7,6 +7,7 @@
 import type { Task, TaskState } from "./types";
 import { listMissionIds, listTasks, readMission, readTransitions } from "./ledger";
 import { isDependencySatisfied } from "./states";
+import { memoryStatusSummary, type MemoryStatusSummary } from "./memory";
 
 export interface BudgetExhaustedItem {
   task: string;
@@ -51,6 +52,13 @@ export interface StatusReport {
     expired_leases: ExpiredLeaseItem[];
     stuck_in_repair: StuckInRepairItem[];
     gate_failures: GateFailureItem[];
+    // A pending Tier-C proposal is an escalation, not routine memory
+    // housekeeping (docs/memory.md §1 Layer 3, spec §12.2: "a worker
+    // cannot establish architectural truth by writing memory"); a
+    // needs-reverification entry is a freshness exception for its owning
+    // role (spec §12.4).
+    memory_tier_c_pending: MemoryStatusSummary["tier_c_pending"];
+    memory_needs_reverification: MemoryStatusSummary["needs_reverification"];
   };
   missions: MissionProgress[];
   state_tally: Record<string, number>;
@@ -132,12 +140,16 @@ export function buildStatusReport(repo: string): StatusReport {
     stateTally[t.status] = (stateTally[t.status] ?? 0) + 1;
   }
 
+  const memorySummary = memoryStatusSummary(repo);
+
   return {
     exceptions: {
       budget_exhausted: budgetExhausted,
       expired_leases: expiredLeases,
       stuck_in_repair: stuckInRepair,
       gate_failures: gateFailures,
+      memory_tier_c_pending: memorySummary.tier_c_pending,
+      memory_needs_reverification: memorySummary.needs_reverification,
     },
     missions,
     state_tally: stateTally,
@@ -150,7 +162,9 @@ export function renderStatusText(report: StatusReport): string {
     report.exceptions.budget_exhausted.length +
       report.exceptions.expired_leases.length +
       report.exceptions.stuck_in_repair.length +
-      report.exceptions.gate_failures.length >
+      report.exceptions.gate_failures.length +
+      report.exceptions.memory_tier_c_pending.length +
+      report.exceptions.memory_needs_reverification.length >
     0;
 
   lines.push("EXCEPTIONS");
@@ -168,6 +182,12 @@ export function renderStatusText(report: StatusReport): string {
     }
     for (const e of report.exceptions.gate_failures) {
       lines.push(`  [gate-failure] ${e.task} (mission ${e.mission}) ${e.reason}`);
+    }
+    for (const e of report.exceptions.memory_tier_c_pending) {
+      lines.push(`  [memory-tier-c-escalation] ${e.id} (source ${e.source_task}) areas=${e.areas.join(",")} — pending design-authority approval, ${e.file}`);
+    }
+    for (const e of report.exceptions.memory_needs_reverification) {
+      lines.push(`  [memory-needs-reverification] ${e.id} areas=${e.areas.join(",")} — ${e.file}`);
     }
   }
 

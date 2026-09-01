@@ -12,10 +12,9 @@
 #
 # Owner: repo-maintainer role. Staleness trigger: `agent validate` resolves
 # every path below to a SKILL.md (in the target repo or the packaged
-# skills tree); a path that stops resolving fails validation. The vendored
-# (skills/vendor/<pack>/...) paths below are populated by Wave B of this
-# build (docs/integrations.md §7) — until that lands, `agent validate`
-# reporting them as missing is expected, not a bug in this file.
+# skills tree); a path that stops resolving fails validation. All vendored
+# (skills/vendor/<pack>/...) paths below are populated — see each pack's
+# VENDOR.md for the pinned upstream commit and adaptation log.
 version: 1
 roles:
   # F.1 Uncertainty Resolver — Matt Pocock planning chain (Appendix G.1:

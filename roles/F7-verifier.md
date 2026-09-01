@@ -91,6 +91,10 @@ plus screenshots, traces, logs as applicable (spec §9.1).
 9. **Write `reproducible_with`** so any human or agent can re-run exactly
    this verification later without reconstructing the setup from memory.
 
+When you learn something durably true, append it to
+`.agent/runs/<TASK-ID>/memory-candidates.jsonl` — never write
+`.agent/memory/` directly (docs/memory.md).
+
 ## Done means
 
 Every line of the task's `verification:` block produced a deterministic

@@ -142,6 +142,10 @@ One verdict file per required lens:
    contract violation of this role, not evidence of a clean fleet — hold
    the bar even when there's schedule pressure to pass something.
 
+When you learn something durably true, append it to
+`.agent/runs/<TASK-ID>/memory-candidates.jsonl` — never write
+`.agent/memory/` directly (docs/memory.md).
+
 ## Done means
 
 Each mandatory lens returns PASS/FAIL with findings citing the reviewed

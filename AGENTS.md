@@ -36,6 +36,8 @@ has run `agent init`**, the rest of this file — and that repo's own
 | Security model | `docs/security.md`, spec §16 |
 | Harness-specific how-to | `docs/harness/{cursor,claude-code,generic}.md` |
 | CLI usage | `docs/getting-started.md`, `roles/F5-control-plane.md` |
+| Skill/binding model (contract, vendored, native) | `skills/README.md`, `policies/bindings.yaml`, `docs/integrations.md` |
+| Memory (candidate facts to durable, gated entries) | `docs/memory.md` |
 
 ## The operating loop
 
@@ -66,6 +68,36 @@ Every task is bound to exactly one **role contract** in `/roles`. Before
 doing any task work: read the task envelope (`agent task show <id>`),
 read the role contract it names, read its pinned inputs, and do not
 exceed that role's stated authority.
+
+`agent task claim` (and `task start`) print more than the state
+transition — resolved `startup_skills` and recommended skills for the
+task's role from `policies/bindings.yaml`, and (once memory recall is
+live — see below) any matching memory paths for the task's
+`payload.areas`. **Read that printed output before doing anything
+else** and load what it names; skipping it because the task "looks
+small" is exactly the failure mode `skills/worker-startup` exists to
+prevent.
+
+**Skills bind in three layers.** A role contract can be satisfied by the
+platform's own portable contract skills (`skills/<name>`, always
+present), a pinned MIT snapshot of a vendored pack
+(`skills/vendor/<pack>`, preferred where the harness supports Agent
+Skills natively), or an operator's own native harness install — all
+declared per role per harness in `policies/bindings.yaml` and installed
+into a harness's discovery path with `agent skills install`. Gates never
+move: whichever layer executes a role, its output is judged the same
+way. Full model: `skills/README.md`.
+
+**Memory discipline.** When you learn something durably true — before
+your task started, you'd have wanted to know it — append it to that
+run's `.agent/runs/<TASK-ID>/memory-candidates.jsonl`. Never write
+`.agent/memory/` directly: durable entries land there only through
+tier-gated approval (verifier for operational facts, domain/spec
+authority for domain facts, design authority for architecture facts),
+never by a worker's own hand. Full lifecycle — candidate to proposal to
+approved entry, staleness, expiry — is `docs/memory.md` (the CLI in
+§3 is landing in the current build wave; a missing `agent memory`
+command today is not a documentation error).
 
 ## Core rules
 

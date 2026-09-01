@@ -14,6 +14,7 @@ import { instantiateWorkflow } from "./compiler";
 import { resolveRoute } from "./router";
 import { checkEvidence, scaffoldRunDir } from "./evidence";
 import { initRepo } from "./scaffold";
+import * as memory from "./memory";
 import { buildStatusReport, renderStatusText } from "./status";
 import * as P from "./paths";
 import type { BindingsPolicy, Harness, ResolvedRoleBindings } from "./bindings";
@@ -65,6 +66,39 @@ function printBindingsText(rb: ResolvedRoleBindings | undefined): void {
   if (rb.skills.length > 0) {
     console.log(`Recommended skills (${rb.harness}):`);
     for (const s of rb.skills) console.log(`  - ${s}`);
+  }
+}
+
+// -------------------------------------------------------------------- memory
+
+/** payload.areas, tolerating non-implementation payloads that lack it (docs/memory.md §3 Recall). */
+function taskAreas(task: Task): string[] {
+  const payload = task.payload as Record<string, unknown> | undefined;
+  const areas = payload?.areas;
+  if (!Array.isArray(areas)) return [];
+  return areas.filter((a): a is string => typeof a === "string");
+}
+
+/** Text-mode printing for `agent task claim`/`start` recall (docs/memory.md §3). No-op if .agent/memory is absent or nothing matched. */
+function printMemoryRecallText(recall: memory.MemoryRecall): void {
+  const total = (recall.index ? 1 : 0) + recall.topics.length + recall.discoveries.length + recall.incidents.length;
+  if (total === 0) return;
+  console.log("Related memory:");
+  if (recall.index) console.log(`  - ${recall.index}`);
+  for (const t of recall.topics) console.log(`  - ${t}`);
+  for (const d of recall.discoveries) console.log(`  - ${d}`);
+  for (const i of recall.incidents) console.log(`  - ${i}`);
+}
+
+function printMaterializeResult(result: memory.MaterializeResult): void {
+  console.log(
+    `memory propose ${result.taskId}: ${result.created.length} proposal(s) created ` +
+      `(of ${result.totalLines} candidate line(s), ${result.alreadyMaterialized} already materialized)`
+  );
+  for (const f of result.created) console.log(`  created: ${f}`);
+  if (result.problems.length > 0) {
+    console.log(`  ${result.problems.length} malformed candidate line(s) (reported, not fatal):`);
+    for (const p of result.problems) console.log(`    line ${p.line}: ${p.message}`);
   }
 }
 
@@ -149,7 +183,13 @@ program
     guarded((paths: string[]) => {
       const repo = getRepo();
       const targets = paths.length > 0 ? paths.map((p) => path.resolve(p)) : defaultValidationTargets(repo);
-      if (targets.length === 0) {
+      // Memory entries (proposals + active + rejected + expired) are always
+      // checked, regardless of explicit --paths args: they are markdown
+      // files with embedded frontmatter blocks, not directly nameable
+      // targets under the schema-per-file convention above (docs/memory.md
+      // §3, spec §12.4).
+      const memoryReport = memory.validateMemoryEntries(repo);
+      if (targets.length === 0 && memoryReport.items.length === 0) {
         console.log("No files to validate.");
         return;
       }
@@ -178,6 +218,20 @@ program
           const message = e instanceof Error ? e.message : String(e);
           console.log(`FAIL  ${target}  [${schemaName}]`);
           console.log(`        ${message}`);
+        }
+      }
+      for (const item of memoryReport.items) {
+        if (item.schemaProblems.length > 0) {
+          ok = false;
+          console.log(`FAIL  ${item.file}  [memory-entry ${item.id}]`);
+          for (const p of item.schemaProblems) console.log(`        ${p}`);
+        } else if (item.flagged) {
+          // Never fails validate on its own (docs/memory.md §3 "never
+          // auto-delete") — flagged and re-verified, not an error.
+          console.log(`FLAG  ${item.file}  [memory-entry ${item.id}]  needs-reverification`);
+          for (const r of item.flagReasons ?? []) console.log(`        ${r}`);
+        } else {
+          console.log(`OK    ${item.file}  [memory-entry ${item.id}]`);
         }
       }
       if (!ok) process.exitCode = 1;
@@ -344,6 +398,7 @@ taskCmd
       }
 
       const rb = resolveRoleBindings(repo, task.role);
+      const memoryRecall = memory.recallForAreas(repo, taskAreas(task));
 
       if (opts.json) {
         const out: Record<string, unknown> = { ...task };
@@ -351,6 +406,7 @@ taskCmd
           out.startup_skills = rb.startup_skills;
           out.skills = rb.skills;
         }
+        out.memory = memoryRecall;
         printJson(out);
         return;
       }
@@ -358,6 +414,7 @@ taskCmd
       console.log(`Claimed ${task.id} for '${opts.agent}', lease expires ${task.lease?.expires_at}`);
       if (workspace) console.log(`Worktree: ${workspace}`);
       printBindingsText(rb);
+      printMemoryRecallText(memoryRecall);
     })
   );
 
@@ -371,6 +428,7 @@ taskCmd
       const actor = actorFor(repo, id);
       const task = ledger.startTask(repo, id, actor);
       const rb = resolveRoleBindings(repo, task.role);
+      const memoryRecall = memory.recallForAreas(repo, taskAreas(task));
 
       if (opts.json) {
         const out: Record<string, unknown> = { ...task };
@@ -378,12 +436,14 @@ taskCmd
           out.startup_skills = rb.startup_skills;
           out.skills = rb.skills;
         }
+        out.memory = memoryRecall;
         printJson(out);
         return;
       }
 
       console.log(`${task.id} -> ${task.status}`);
       printBindingsText(rb);
+      printMemoryRecallText(memoryRecall);
     })
   );
 
@@ -396,6 +456,17 @@ taskCmd
       const actor = actorFor(repo, id);
       const task = ledger.submitTask(repo, id, actor);
       console.log(`${task.id} -> ${task.status}`);
+      // Layer 1 -> Layer 2 auto-fire (docs/memory.md §3 build plan item 2):
+      // never blocks or fails submit itself, even on an unexpected error.
+      try {
+        const result = memory.materializeProposals(repo, id);
+        if (result.created.length > 0 || result.problems.length > 0) {
+          printMaterializeResult(result);
+        }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        console.log(`  memory propose warning (non-blocking): ${message}`);
+      }
     })
   );
 
@@ -636,6 +707,112 @@ retroCmd
       ensureDir(P.runDir(repo, taskId));
       writeJsonAtomic(P.retrospectiveFile(repo, taskId), retro);
       console.log(`Wrote ${P.retrospectiveFile(repo, taskId)}`);
+    })
+  );
+
+// ------------------------------------------------------------------ memory
+
+const memoryCmd = program.command("memory").description("Field Guide memory commands (docs/memory.md, spec §12)");
+
+memoryCmd
+  .command("propose")
+  .argument("<task-id>")
+  .description(
+    "materialize .agent/runs/<task-id>/memory-candidates.jsonl into pending proposals (idempotent manual re-run; auto-fired by `task submit`)"
+  )
+  .action(
+    guarded((taskId: string) => {
+      const repo = getRepo();
+      const result = memory.materializeProposals(repo, taskId);
+      printMaterializeResult(result);
+    })
+  );
+
+memoryCmd
+  .command("list")
+  .description("list proposals + landed entries (all statuses by default)")
+  .option("--status <status>", "pending|active|needs-reverification|rejected|expired")
+  .option("--json", "machine-readable output")
+  .action(
+    guarded((opts: { status?: string; json?: boolean }) => {
+      const repo = getRepo();
+      if (opts.status && !["pending", "active", "needs-reverification", "rejected", "expired"].includes(opts.status)) {
+        throw new Error(`--status must be one of: pending, active, needs-reverification, rejected, expired (got '${opts.status}')`);
+      }
+      const items = memory.listMemoryItems(repo, opts.status as memory.MemoryStatus | undefined);
+      if (opts.json) {
+        printJson(items);
+        return;
+      }
+      if (items.length === 0) {
+        console.log("No memory items.");
+        return;
+      }
+      for (const i of items) {
+        console.log(`${i.id}  [${i.status}]  tier=${i.tier}  areas=${i.areas.join(",")}  ${i.claim}`);
+      }
+    })
+  );
+
+memoryCmd
+  .command("show")
+  .argument("<id>")
+  .description("show one proposal or entry, by proposal filename (<TASK-ID>-<NN>) or frontmatter id (MEM-...)")
+  .option("--json", "machine-readable output")
+  .action(
+    guarded((id: string, opts: { json?: boolean }) => {
+      const repo = getRepo();
+      const item = memory.findMemoryItem(repo, id);
+      if (!item) throw new Error(`No memory item '${id}' found under ${P.memoryDir(repo)}.`);
+      if (opts.json) {
+        printJson(item);
+        return;
+      }
+      console.log(`${item.id}  [${item.status}]  ${item.file}`);
+      console.log(JSON.stringify(item.frontmatter, null, 2));
+      console.log("");
+      console.log(item.body);
+    })
+  );
+
+memoryCmd
+  .command("approve")
+  .argument("<id>")
+  .description("land a pending proposal into its topic file (tier-gated, spec §12.2)")
+  .requiredOption("--by <role>", "approving role")
+  .action(
+    guarded((id: string, opts: { by: string }) => {
+      const repo = getRepo();
+      const result = memory.approveProposal(repo, id, opts.by);
+      console.log(`${result.id} -> ${result.status}  (${result.file})`);
+    })
+  );
+
+memoryCmd
+  .command("reject")
+  .argument("<id>")
+  .description("decline a pending proposal to proposals/rejected/, reason preserved (tier-gated, spec §12.2)")
+  .requiredOption("--by <role>", "rejecting role")
+  .requiredOption("--reason <reason>", "reason, preserved in frontmatter")
+  .action(
+    guarded((id: string, opts: { by: string; reason: string }) => {
+      const repo = getRepo();
+      const result = memory.rejectProposal(repo, id, opts.by, opts.reason);
+      console.log(`${result.id} -> ${result.status}  (${result.file})`);
+    })
+  );
+
+memoryCmd
+  .command("expire")
+  .argument("<id>")
+  .description("retire a landed entry to expired/, superseded_by preserved (tier-gated, spec §12.2)")
+  .requiredOption("--by <role>", "expiring role")
+  .requiredOption("--reason <reason>", "reason, preserved in frontmatter")
+  .action(
+    guarded((id: string, opts: { by: string; reason: string }) => {
+      const repo = getRepo();
+      const result = memory.expireEntry(repo, id, opts.by, opts.reason);
+      console.log(`${result.id} -> ${result.status}  (${result.file})`);
     })
   );
 

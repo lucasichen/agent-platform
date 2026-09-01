@@ -48,6 +48,47 @@ to a mode so switching roles is a dropdown, not a copy-paste:
    §12.4); there's no mechanical CI check for this one, so re-copy it
    deliberately after editing `/roles`.
 
+## Installing skills into Cursor
+
+`policies/bindings.yaml` binds roles to skills at three layers
+(`docs/integrations.md` §2): the platform's own portable contract
+skills, pinned MIT snapshots of vendored packs (`skills/vendor/pstack`,
+`pocock`, `superpowers`, `gstack` — each pinned to an upstream commit in
+its own `VENDOR.md`), or a full native plugin install through Cursor's
+own plugin system. `agent task claim`/`start` always print the resolved
+`startup_skills` and recommended skills for a task's role regardless of
+which layer you use, so nothing requires an install step. To put those
+skills where Cursor auto-discovers them instead of opening a `SKILL.md`
+by hand:
+
+```bash
+agent skills install --harness cursor [--repo <path>]
+```
+
+This copies every skill your bound roles need — startup skills plus the
+`cursor` entries under each role in `bindings.yaml` — into
+`.cursor/skills/` (the `install.cursor` path in `bindings.yaml`,
+`.cursor/skills` by default). Vendored skills install under their
+pack-prefixed frontmatter `name` (e.g. pstack's `poteto-mode` skill
+installs as `pstack-poteto-mode`) so names never collide across packs.
+Idempotent — re-running skips files already placed and reports what it
+skipped; pass `--force` to overwrite a copy you've locally modified.
+
+For the `worker` role this is how `pstack-poteto-mode` actually reaches
+a Cursor session: `skills/worker-startup`'s task-start protocol hands
+off to it once installed ("if `pstack-poteto-mode` is installed in your
+harness, enter it now for execution style") — the platform's
+preconditions and evidence duties in `worker-startup` still bind
+regardless; poteto-mode governs *how* the steps are worked, not whether
+they're required.
+
+Layer 3 — a full native install of the upstream pstack Cursor plugin
+through Cursor's own plugin system, rather than the pinned/adapted
+snapshot `skills install` places — remains available as an optional
+upgrade path; it's operator-managed and never required. Whichever layer
+executes a role, the same gates apply to its output (`docs/integrations.md`
+§2: "gates never move").
+
 ## AGENTS.md support
 
 Cursor reads `AGENTS.md` at the repo root automatically as background

@@ -59,6 +59,11 @@ hand-edited.
   transitions.jsonl            append-only lifecycle log, one line per
                              state transition (spec §6.3): `{ts, from, to,
                              actor, reason}`
+  memory-candidates.jsonl      optional; present only if this run learned
+                             something durably true (docs/memory.md,
+                             Wave D memory architecture, Layer 1). Any
+                             role may append — never write .agent/memory/
+                             directly.
 ```
 
 `agent evidence init <task-id>` scaffolds this directory at claim time;
@@ -238,6 +243,30 @@ or `.agent/evals/`).
 One line per lifecycle transition (spec §6.3): `{"ts": "...", "from":
 "RUNNING", "to": "GATING", "actor": "worker-03", "reason": "submitted"}`.
 Append-only; the CLI writes this, tasks don't hand-edit it.
+
+### `memory-candidates.jsonl`
+
+Layer 1 of the memory ladder (docs/memory.md §1) — durable-fact candidates
+this run's agent(s) learned, distinct from `decisions.tsv`'s "why I chose
+X" log. Any role appends a line when it learns something future agents
+should know *before* their task starts; the file is optional and absent
+for most runs. One JSON object per line:
+
+```json
+{"ts": "2026-08-31T20:00:00Z", "tier": "A", "areas": ["auth"], "claim": "Login endpoint rate-limits after 5 failures", "body": "The /login endpoint returns 429 after 5 failed attempts within 60s.", "refs": ["src/auth/login.ts"], "proposed_by": "worker-07"}
+```
+
+`tier` is `A|B|C` (spec §12.2 authority table). `areas[]` joins against
+task `payload.areas` for recall. `refs[]` is non-empty — no refs, no
+trust (docs/memory.md §2). `agent task submit` automatically materializes
+every not-yet-processed line into a proposal file under
+`.agent/memory/proposals/` (`agent memory propose <task-id>`, idempotent,
+non-blocking — a malformed line is reported, never fails the submit).
+This file itself is never written to directly by `.agent/memory/`
+tooling; it is only ever appended to during a run. See
+`templates/repo/.agent/memory/README.md` for the full proposal-to-landed-
+entry flow and the tier-gated `agent memory approve/reject/expire`
+commands.
 
 ## Secrets redaction (spec §16.2)
 

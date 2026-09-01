@@ -254,6 +254,10 @@ debugging methodology is bound.
 
 ## Evidence duties
 
+When you learn something durably true, append it to
+`.agent/runs/<TASK-ID>/memory-candidates.jsonl` — never write
+`.agent/memory/` directly (docs/memory.md).
+
 Log decisions **as you make them**, not batched at the end — a design
 question resolved inside your stated freedom (worker freedom list above)
 still gets a row in `decisions.tsv` so it's auditable without replaying

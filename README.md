@@ -53,6 +53,18 @@ to any model/harness that can meet it (spec Appendix F). The platform
 speaks capability **tiers** (`frontier`, `strong`, `mid`, `cheap`), never
 vendor models.
 
+Every role can be bound at three layers: the platform's own portable
+contract skills, pinned MIT snapshots of four vendored packs — pstack,
+Matt Pocock's skills, Superpowers, gstack, under `skills/vendor/` with
+their upstream commit and license recorded in each pack's `VENDOR.md` —
+or an operator's own native harness install; `policies/bindings.yaml`
+declares which is active per role per harness and `agent task claim`
+announces it (`docs/integrations.md`, `skills/README.md`). The platform
+also grows a tiered, gated memory — candidate facts proposed at task
+submit, approved into durable Field Guide entries only by the tier's
+authority role — so what one run learns durably helps the next
+(`docs/memory.md`).
+
 ## Repository layout
 
 | Path | What |
@@ -61,6 +73,9 @@ vendor models.
 | `docs/DESIGN.md` | Binding interface contract for building this repo |
 | `docs/getting-started.md` | Install, `agent init`, first mission, the loop |
 | `docs/evidence-contract.md` | Evidence bundle shapes, "PASS without evidence is FAIL" |
+| `docs/integrations.md` | Third-party integration plan: the three-layer binding model, per-pack adoption |
+| `docs/skills-design.md` | Binding interface contract for the skills/bindings build |
+| `docs/memory.md` | Memory architecture: candidate facts to durable, tier-gated Field Guide entries |
 | `docs/metrics.md` | Fleet/mission metrics, promotion gates, attention economics |
 | `docs/security.md` | Prompt injection, secrets, sandboxing, supply chain |
 | `docs/harness/` | Cursor / Claude Code / generic-harness how-to |
@@ -68,7 +83,8 @@ vendor models.
 | `schemas/` | JSON Schemas — source of truth for every artifact shape |
 | `registry/workflows/` | Reusable workflow templates (`project-definition`, `feature-development`, `bug-fix`) |
 | `roles/` | Role contracts F.0–F.10, one file per role |
-| `policies/` | Default risk/model/escalation/architecture policy, copied into target repos by `agent init` |
+| `skills/` | Agent Skills: our contract skills, plus vendored MIT packs — the three-layer binding model behind every role (`skills/README.md`) |
+| `policies/` | Default risk/model/escalation/architecture/bindings policy, copied into target repos by `agent init` |
 | `templates/repo/.agent/` | The installable `.agent/` scaffold (spec Appendix A) |
 | `platform/` | The `agent` control-plane CLI (Node/TypeScript) |
 

@@ -43,6 +43,7 @@ test("inferSchemaName recognizes DESIGN.md/Appendix filename conventions", () =>
   assert.equal(inferSchemaName("/x/.agent/missions/M/workflow-instance.yaml"), "workflow-instance");
   assert.equal(inferSchemaName("/x/.agent/policies/risk.yaml"), "risk-policy");
   assert.equal(inferSchemaName("/x/.agent/policies/models.yaml"), "models-policy");
+  assert.equal(inferSchemaName("/x/.agent/policies/bindings.yaml"), "bindings-policy");
   assert.equal(inferSchemaName("/x/.agent/workflows/bug-fix.yaml"), "workflow-template");
   assert.equal(inferSchemaName("/x/.agent/runs/T-1/verification/result.json"), "verification-result");
   assert.equal(inferSchemaName("/x/.agent/runs/T-1/result.json"), "result");

@@ -5,7 +5,7 @@ import { Command } from "commander";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import type { Mission, TaskState } from "./types";
+import type { Mission, Task, TaskState } from "./types";
 import { readYaml, readJson, ensureDir, writeJsonAtomic } from "./fsutil";
 import { validateOrThrow, collectProblems, inferSchemaName } from "./validate";
 import * as ledger from "./ledger";
@@ -16,6 +16,10 @@ import { checkEvidence, scaffoldRunDir } from "./evidence";
 import { initRepo } from "./scaffold";
 import { buildStatusReport, renderStatusText } from "./status";
 import * as P from "./paths";
+import type { BindingsPolicy, Harness, ResolvedRoleBindings } from "./bindings";
+import { resolveRoleBindings, bindingsSkillPathProblems } from "./bindings";
+import { installSkills } from "./skills";
+import { ensureWorktree } from "./worktree";
 
 const program = new Command();
 program
@@ -47,6 +51,40 @@ function printJson(data: unknown): void {
 function actorFor(repo: string, taskId: string): string {
   const task = ledger.readTask(repo, taskId);
   return task.lease?.owner ?? "cli-operator";
+}
+
+// ---------------------------------------------------------- bindings/skills
+
+/** Text-mode printing for `agent task claim`/`start` (docs/skills-design.md §5). No-op if bindings.yaml is absent. */
+function printBindingsText(rb: ResolvedRoleBindings | undefined): void {
+  if (!rb) return;
+  if (rb.startup_skills.length > 0) {
+    console.log("Required before work begins:");
+    for (const s of rb.startup_skills) console.log(`  - ${s}`);
+  }
+  if (rb.skills.length > 0) {
+    console.log(`Recommended skills (${rb.harness}):`);
+    for (const s of rb.skills) console.log(`  - ${s}`);
+  }
+}
+
+// ------------------------------------------------------------- worktrees
+
+const WORKTREE_HINT_STATES: ReadonlySet<TaskState> = new Set(["DONE", "MERGED", "DEPLOYED", "PRODUCTION_VERIFIED", "BLOCKED", "READY"]);
+
+/**
+ * `agent task reclaim` and terminal states leave the worktree in place but
+ * print a cleanup hint (docs/skills-design.md §5) — never delete work.
+ * workspace is read from task.payload.workspace (schemas/task.schema.json
+ * is out of this build's scope; payload is the schema's designated
+ * open-ended extension point, so the worktree path is recorded there
+ * rather than as a new top-level task field).
+ */
+function printWorktreeHint(task: Task): void {
+  const workspace = (task.payload as Record<string, unknown> | undefined)?.workspace;
+  if (typeof workspace !== "string" || workspace.length === 0) return;
+  if (!WORKTREE_HINT_STATES.has(task.status)) return;
+  console.log(`  worktree left in place: ${workspace} (clean up manually: git worktree remove ${workspace})`);
 }
 
 // ------------------------------------------------------------------- init
@@ -125,6 +163,9 @@ program
         try {
           const data = target.endsWith(".json") ? readJson(target) : readYaml(target);
           const problems = collectProblems(schemaName, data);
+          if (schemaName === "bindings-policy" && problems.length === 0) {
+            problems.push(...bindingsSkillPathProblems(repo, data as BindingsPolicy));
+          }
           if (problems.length === 0) {
             console.log(`OK    ${target}  [${schemaName}]`);
           } else {
@@ -282,27 +323,67 @@ taskCmd
   .argument("<id>")
   .requiredOption("--agent <name>", "claiming agent name")
   .option("--ttl <minutes>", "lease TTL in minutes", "60")
+  .option("--worktree", "create/reuse a git worktree at .worktrees/<task-id> on branch task/<task-id>", false)
+  .option("--json", "machine-readable output", false)
   .action(
-    guarded((id: string, opts: { agent: string; ttl: string }) => {
+    guarded((id: string, opts: { agent: string; ttl: string; worktree?: boolean; json?: boolean }) => {
       const repo = getRepo();
       const ttlMinutes = Number(opts.ttl);
       if (!Number.isFinite(ttlMinutes) || ttlMinutes <= 0) {
         throw new Error(`--ttl must be a positive number of minutes, got '${opts.ttl}'`);
       }
-      const task = ledger.claimTask(repo, id, opts.agent, ttlMinutes);
+      let task = ledger.claimTask(repo, id, opts.agent, ttlMinutes);
+
+      let workspace: string | undefined;
+      if (opts.worktree) {
+        const wt = ensureWorktree(repo, id);
+        workspace = wt.workspace;
+        const payload = { ...(task.payload as Record<string, unknown>), workspace };
+        task = { ...task, payload };
+        ledger.writeTask(repo, task.mission, task);
+      }
+
+      const rb = resolveRoleBindings(repo, task.role);
+
+      if (opts.json) {
+        const out: Record<string, unknown> = { ...task };
+        if (rb) {
+          out.startup_skills = rb.startup_skills;
+          out.skills = rb.skills;
+        }
+        printJson(out);
+        return;
+      }
+
       console.log(`Claimed ${task.id} for '${opts.agent}', lease expires ${task.lease?.expires_at}`);
+      if (workspace) console.log(`Worktree: ${workspace}`);
+      printBindingsText(rb);
     })
   );
 
 taskCmd
   .command("start")
   .argument("<id>")
+  .option("--json", "machine-readable output", false)
   .action(
-    guarded((id: string) => {
+    guarded((id: string, opts: { json?: boolean }) => {
       const repo = getRepo();
       const actor = actorFor(repo, id);
       const task = ledger.startTask(repo, id, actor);
+      const rb = resolveRoleBindings(repo, task.role);
+
+      if (opts.json) {
+        const out: Record<string, unknown> = { ...task };
+        if (rb) {
+          out.startup_skills = rb.startup_skills;
+          out.skills = rb.skills;
+        }
+        printJson(out);
+        return;
+      }
+
       console.log(`${task.id} -> ${task.status}`);
+      printBindingsText(rb);
     })
   );
 
@@ -341,6 +422,7 @@ taskCmd
         checkEvidence
       );
       console.log(`${task.id} -> ${task.status}`);
+      printWorktreeHint(task);
     })
   );
 
@@ -353,6 +435,7 @@ taskCmd
       const actor = actorFor(repo, id);
       const task = ledger.doneTask(repo, id, actor);
       console.log(`${task.id} -> ${task.status}`);
+      printWorktreeHint(task);
     })
   );
 
@@ -365,6 +448,7 @@ taskCmd
       const repo = getRepo();
       const task = ledger.failTask(repo, id, opts.reason, "cli-operator");
       console.log(`${task.id} -> ${task.status} (${opts.reason})`);
+      printWorktreeHint(task);
     })
   );
 
@@ -381,6 +465,37 @@ taskCmd
       }
       for (const r of results) {
         console.log(`Reclaimed ${r.taskId} (was ${r.from}, held by ${r.previousOwner}) -> READY`);
+        printWorktreeHint(ledger.readTask(repo, r.taskId));
+      }
+    })
+  );
+
+// ------------------------------------------------------------------ skills
+
+const skillsCmd = program.command("skills").description("skill binding commands (docs/skills-design.md §5)");
+
+skillsCmd
+  .command("install")
+  .description("install bindings.yaml-referenced skills into the harness discovery path (or write a generic index)")
+  .option("--harness <harness>", "generic|claude-code|cursor (default: bindings.yaml's active_harness)")
+  .option("--force", "overwrite already-installed skills", false)
+  .action(
+    guarded((opts: { harness?: string; force?: boolean }) => {
+      const repo = getRepo();
+      if (opts.harness && opts.harness !== "generic" && opts.harness !== "claude-code" && opts.harness !== "cursor") {
+        throw new Error(`--harness must be one of: generic, claude-code, cursor (got '${opts.harness}')`);
+      }
+      const result = installSkills(repo, { harness: opts.harness as Harness | undefined, force: opts.force });
+      console.log(`skills install --harness ${result.harness}  (bindings: ${result.source})`);
+      if (result.indexFile) console.log(`  index: ${result.indexFile}`);
+      if (result.installDir) console.log(`  install dir: ${result.installDir}`);
+      for (const item of result.items) {
+        const label = item.name ?? item.relPath;
+        console.log(`  ${item.status.padEnd(11)} ${label}${item.detail ? `  (${item.detail})` : ""}`);
+      }
+      const missing = result.items.filter((i) => i.status === "missing");
+      if (missing.length > 0) {
+        console.log(`${missing.length} skill(s) could not be resolved (see 'missing' above) — this is a warning, not a failure.`);
       }
     })
   );

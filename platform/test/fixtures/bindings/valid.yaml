@@ -1,0 +1,21 @@
+version: 1
+roles:
+  worker:
+    startup_skills:
+      - skills/worker-startup
+    skills:
+      generic: []
+      claude-code:
+        - skills/vendor/pstack/skills/poteto-mode
+        - skills/vendor/superpowers/skills/test-driven-development
+      cursor:
+        - skills/vendor/pstack/skills/poteto-mode
+  architect:
+    skills:
+      generic: []
+      claude-code: []
+      cursor: []
+active_harness: claude-code
+install:
+  claude-code: ".claude/skills"
+  cursor: ".cursor/skills"

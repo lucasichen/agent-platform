@@ -5,6 +5,8 @@ import * as path from "node:path";
 import { makeTempRepo } from "./testutil";
 import { initRepo } from "../src/scaffold";
 import { agentDir, policiesDirIn } from "../src/paths";
+import { readYaml } from "../src/fsutil";
+import { validateOrThrow } from "../src/validate";
 
 test("init installs the .agent scaffold and default policies", () => {
   const repo = makeTempRepo();
@@ -15,13 +17,38 @@ test("init installs the .agent scaffold and default policies", () => {
   assert.ok(result.policiesCreated.includes("risk.yaml"));
   assert.ok(result.policiesCreated.includes("models.yaml"));
   assert.ok(result.policiesCreated.includes("escalation.yaml"));
+  assert.ok(result.policiesCreated.includes("bindings.yaml"), "agent init must install bindings.yaml alongside the other policies");
   assert.equal(result.scaffoldSkipped.length, 0);
   assert.equal(result.policiesSkipped.length, 0);
 
   assert.ok(fs.existsSync(path.join(agentDir(repo), "repo.yaml")));
   assert.ok(fs.existsSync(path.join(policiesDirIn(repo), "risk.yaml")));
+  assert.ok(fs.existsSync(path.join(policiesDirIn(repo), "bindings.yaml")));
   assert.ok(fs.existsSync(path.join(agentDir(repo), "missions")));
   assert.ok(fs.existsSync(path.join(agentDir(repo), "runs")));
+});
+
+test("init-installed bindings.yaml is schema-valid and covers every DESIGN.md role", () => {
+  const repo = makeTempRepo();
+  initRepo(repo);
+  const data = readYaml<{ roles: Record<string, unknown> }>(path.join(policiesDirIn(repo), "bindings.yaml"));
+  assert.doesNotThrow(() => validateOrThrow("bindings-policy", data, "installed bindings.yaml"));
+  for (const role of [
+    "workflow-compiler",
+    "uncertainty-resolver",
+    "domain-product-clarifier",
+    "specifier",
+    "architect",
+    "task-decomposer",
+    "control-plane",
+    "worker",
+    "verifier",
+    "reviewer",
+    "merge-refinery",
+    "learning-evaluator",
+  ]) {
+    assert.ok(role in data.roles, `bindings.yaml is missing role '${role}' (spec Appendix G.1)`);
+  }
 });
 
 test("init is idempotent: re-running never overwrites, reports everything as skipped", () => {

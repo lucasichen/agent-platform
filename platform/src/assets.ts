@@ -60,3 +60,13 @@ export function packagedRegistryWorkflowsDir(): string | undefined {
     path.join(monorepoRoot(), "registry", "workflows"),
   ]);
 }
+
+/**
+ * The packaged skills/ tree root (contains worker-startup/, vendor/<pack>/skills/<name>/,
+ * etc. — docs/skills-design.md §1). May legitimately not exist: skills/ is
+ * authored by a parallel work package (Waves B/C) and copy-assets.js copies
+ * it only if present. Callers (bindings.ts) must tolerate undefined.
+ */
+export function skillsDir(): string | undefined {
+  return firstExisting([path.join(__dirname, "assets", "skills"), path.join(monorepoRoot(), "skills")]);
+}

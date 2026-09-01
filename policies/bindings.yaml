@@ -1,0 +1,169 @@
+# policies/bindings.yaml — the platform default binding policy.
+#
+# What: role -> skill binding declarations. For each role, `startup_skills`
+# are printed by `agent task claim`/`start` as "Required before work
+# begins" (harness-neutral), and `skills` are the harness-recommended
+# skills `agent skills install` copies into that harness's discovery path.
+# Schema: schemas/bindings-policy.schema.json.
+#
+# Spec ref: Appendix G.1 (Binding decisions), docs/integrations.md §2
+# (three-layer binding model) and §4 (pipeline-with-bindings table).
+# Companion contract: docs/skills-design.md §4.
+#
+# Owner: repo-maintainer role. Staleness trigger: `agent validate` resolves
+# every path below to a SKILL.md (in the target repo or the packaged
+# skills tree); a path that stops resolving fails validation. The vendored
+# (skills/vendor/<pack>/...) paths below are populated by Wave B of this
+# build (docs/integrations.md §7) — until that lands, `agent validate`
+# reporting them as missing is expected, not a bug in this file.
+version: 1
+roles:
+  # F.1 Uncertainty Resolver — Matt Pocock planning chain (Appendix G.1:
+  # "F1/F1A/F2/F4 Matt Pocock skills ... the planning backbone").
+  uncertainty-resolver:
+    skills:
+      generic: []
+      claude-code:
+        - skills/vendor/pocock/skills/wayfinder
+        - skills/vendor/pocock/skills/research
+        - skills/vendor/pocock/skills/prototype
+      cursor:
+        - skills/vendor/pocock/skills/wayfinder
+        - skills/vendor/pocock/skills/research
+        - skills/vendor/pocock/skills/prototype
+
+  # F.1A Domain/Product Clarifier — Matt Pocock chain.
+  domain-product-clarifier:
+    skills:
+      generic: []
+      claude-code:
+        - skills/vendor/pocock/skills/grill-with-docs
+        - skills/vendor/pocock/skills/domain-modeling
+      cursor:
+        - skills/vendor/pocock/skills/grill-with-docs
+        - skills/vendor/pocock/skills/domain-modeling
+
+  # F.2 Specifier — Matt Pocock chain (to-spec writes the F.2 spec shape).
+  specifier:
+    skills:
+      generic: []
+      claude-code:
+        - skills/vendor/pocock/skills/to-spec
+      cursor:
+        - skills/vendor/pocock/skills/to-spec
+
+  # F.3 Architect / Design Authority — pstack /architect + /arena
+  # (Appendix G.1: "F3 pstack /architect + /arena").
+  architect:
+    skills:
+      generic: []
+      claude-code:
+        - skills/vendor/pstack/skills/architect
+        - skills/vendor/pstack/skills/arena
+      cursor:
+        - skills/vendor/pstack/skills/architect
+        - skills/vendor/pstack/skills/arena
+
+  # F.4 Task Decomposer — Matt Pocock chain (to-tickets emits task
+  # envelopes conforming to schemas/task.schema.json).
+  task-decomposer:
+    skills:
+      generic: []
+      claude-code:
+        - skills/vendor/pocock/skills/to-tickets
+      cursor:
+        - skills/vendor/pocock/skills/to-tickets
+
+  # F.5 Control Plane / Scheduler — the platform `agent` CLI is the
+  # reference binding (integrations.md §3 Hermes section); not a
+  # model-driven role, so no skills are bound.
+  control-plane:
+    skills:
+      generic: []
+      claude-code: []
+      cursor: []
+
+  # F.6 Worker — worker-startup (ours, Layer 1) is the task-start trigger;
+  # pstack poteto-mode for execution structure/style, Superpowers for
+  # execution methodology (Appendix G.1: "F6 worker-startup ... -> pstack
+  # poteto-mode + principle-* for structure/style + Superpowers TDD /
+  # systematic-debugging / verification-before-completion for methodology").
+  worker:
+    startup_skills:
+      - skills/worker-startup
+    skills:
+      generic: []
+      claude-code:
+        - skills/vendor/pstack/skills/poteto-mode
+        - skills/vendor/superpowers/skills/test-driven-development
+        - skills/vendor/superpowers/skills/systematic-debugging
+        - skills/vendor/superpowers/skills/verification-before-completion
+      cursor:
+        - skills/vendor/pstack/skills/poteto-mode
+
+  # F.7 Verifier — gstack qa (web) + ios-qa (real-device USB loop)
+  # (Appendix G.1: "F7 gstack qa (web), ios-qa real-device USB loop (iOS)").
+  verifier:
+    skills:
+      generic: []
+      claude-code:
+        - skills/vendor/gstack/skills/qa
+        - skills/vendor/gstack/skills/ios-qa
+      cursor:
+        - skills/vendor/gstack/skills/qa
+        - skills/vendor/gstack/skills/ios-qa
+
+  # F.8 Reviewer — Matt Pocock code-review (spec lens) + pstack
+  # /interrogate (adversarial/architecture) + /unslop (Appendix G.1: "F8
+  # Matt code-review ... + pstack /interrogate ... + /unslop").
+  reviewer:
+    skills:
+      generic: []
+      claude-code:
+        - skills/vendor/pocock/skills/code-review
+        - skills/vendor/pstack/skills/interrogate
+        - skills/vendor/pstack/skills/unslop
+      cursor:
+        - skills/vendor/pocock/skills/code-review
+        - skills/vendor/pstack/skills/interrogate
+        - skills/vendor/pstack/skills/unslop
+
+  # F.9 Merge Refinery — gstack ship/land-and-deploy/canary as the release
+  # binding (Appendix G.1: "F9 merge queue now; gstack ship /
+  # land-and-deploy / canary as release binding").
+  merge-refinery:
+    skills:
+      generic: []
+      claude-code:
+        - skills/vendor/gstack/skills/ship
+        - skills/vendor/gstack/skills/land-and-deploy
+        - skills/vendor/gstack/skills/canary
+      cursor:
+        - skills/vendor/gstack/skills/ship
+        - skills/vendor/gstack/skills/land-and-deploy
+        - skills/vendor/gstack/skills/canary
+
+  # F.10 Learning Evaluator — pstack /reflect (fast loop) + /automate-me
+  # (slow loop) (Appendix G.1: "F10 pstack /reflect ... /automate-me").
+  learning-evaluator:
+    skills:
+      generic: []
+      claude-code:
+        - skills/vendor/pstack/skills/reflect
+        - skills/vendor/pstack/skills/automate-me
+      cursor:
+        - skills/vendor/pstack/skills/reflect
+        - skills/vendor/pstack/skills/automate-me
+
+  # F.0 Workflow Compiler — deterministic composition (docs/DESIGN.md §3);
+  # ask-matt binds only to its advisory slot (integrations.md §3), which is
+  # not a `skills install`-able binding, so no skills are declared here.
+  workflow-compiler:
+    skills:
+      generic: []
+      claude-code: []
+      cursor: []
+active_harness: generic
+install:
+  claude-code: ".claude/skills"
+  cursor: ".cursor/skills"

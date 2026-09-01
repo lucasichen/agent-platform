@@ -1,0 +1,9 @@
+version: 1
+roles:
+  reviewer:
+    skills:
+      generic:
+        - skills/vendor/testpack/skills/multiline-desc
+      claude-code: []
+      cursor: []
+active_harness: generic

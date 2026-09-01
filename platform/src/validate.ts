@@ -23,6 +23,7 @@ export const SCHEMA_FILES: Record<string, string> = {
   repo: "repo.schema.json",
   "models-policy": "models-policy.schema.json",
   "risk-policy": "risk-policy.schema.json",
+  "bindings-policy": "bindings-policy.schema.json",
 };
 
 let ajv: Ajv2020 | undefined;
@@ -110,6 +111,7 @@ export function inferSchemaName(filePath: string): string | undefined {
   if (base === "repo.yaml") return "repo";
   if (base === "risk.yaml") return "risk-policy";
   if (base === "models.yaml") return "models-policy";
+  if (base === "bindings.yaml") return "bindings-policy";
   if (parentDir === "tasks" && base.endsWith(".yaml")) return "task";
   if (parentDir === "workflows" && base.endsWith(".yaml")) return "workflow-template";
   if (parentDir === "reviews" && base.endsWith(".json")) return "review-verdict";

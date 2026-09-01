@@ -1,0 +1,11 @@
+version: 1
+roles:
+  worker:
+    startup_skills:
+      - skills/worker-startup
+    skills:
+      generic: []
+      claude-code:
+        - skills/vendor/ghost-pack/skills/does-not-exist
+      cursor: []
+active_harness: claude-code

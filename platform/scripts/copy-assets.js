@@ -6,10 +6,13 @@
 //   ../policies          -> dist/assets/policies          (copied into target repos by `agent init`)
 //   ../templates/repo    -> dist/assets/templates/repo    (the .agent/ scaffold `agent init` installs)
 //   ../registry/workflows -> dist/assets/registry/workflows (F.0 compiler fallback registry)
+//   ../skills            -> dist/assets/skills            (bindings.ts / skills.ts resolution, docs/skills-design.md §5)
 //
-// The registry/workflows copy is best-effort: it is authored in parallel by
-// another work package and may not exist at build time. Its absence must
-// not fail the build (compiler.ts and the test suite never depend on it).
+// The registry/workflows and skills copies are best-effort: both are
+// authored in parallel by other work packages and may not exist at build
+// time. Their absence must not fail the build (compiler.ts/router.ts and
+// bindings.ts/skills.ts all tolerate absence; the test suite uses fixtures
+// under platform/test/fixtures/skills/ instead of depending on this copy).
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -56,3 +59,4 @@ copyRequired("schemas", "schemas");
 copyRequired("policies", "policies");
 copyRequired(path.join("templates", "repo"), path.join("templates", "repo"));
 copyOptional(path.join("registry", "workflows"), path.join("registry", "workflows"));
+copyOptional("skills", "skills");

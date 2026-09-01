@@ -3,8 +3,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Mission, WorkflowTemplate } from "../src/types";
+import type { BindingsPolicy } from "../src/bindings";
 import { ensureDir, writeYamlAtomic, writeFileAtomic, readYaml } from "../src/fsutil";
 import * as P from "../src/paths";
+import { bindingsFileIn } from "../src/bindings";
 import { initRepo } from "../src/scaffold";
 
 export function makeTempRepo(): string {
@@ -58,4 +60,34 @@ export function registerMission(repo: string, mission: Mission): void {
 export function writeMissionArtifact(repo: string, missionId: string, relPath: string, content = "content"): void {
   const filePath = path.join(P.missionArtifactsDir(repo, missionId), relPath);
   writeFileAtomic(filePath, content);
+}
+
+// ------------------------------------------------------------ skills/bindings
+
+function copyFixtureTree(src: string, dest: string): void {
+  ensureDir(dest);
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyFixtureTree(srcPath, destPath);
+    } else if (entry.isFile()) {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+/** Copies test/fixtures/skills/ into <repo>/skills/, so bindings.ts's in-repo skill resolution finds them. */
+export function installFixtureSkills(repo: string): void {
+  copyFixtureTree(path.join(FIXTURES_DIR, "skills"), path.join(repo, "skills"));
+}
+
+/** Copies test/fixtures/bindings/<name>.yaml into <repo>/.agent/policies/bindings.yaml. */
+export function installFixtureBindings(repo: string, name: string): BindingsPolicy {
+  const srcPath = path.join(FIXTURES_DIR, "bindings", `${name}.yaml`);
+  const data = readYaml<BindingsPolicy>(srcPath);
+  const destPath = bindingsFileIn(repo);
+  ensureDir(path.dirname(destPath));
+  fs.copyFileSync(srcPath, destPath);
+  return data;
 }

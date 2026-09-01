@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-platform.local/schemas/bindings-policy.schema.json",
+  "title": "Bindings Policy",
+  "description": "policies/bindings.yaml — role -> skill binding declarations per harness (docs/skills-design.md §4, spec Appendix G.1, docs/integrations.md §2/§5). Single source of truth for which skills (Layer 1 contract skills and Layer 2 vendored skills) back each role; consumed by `agent skills install`, `agent task claim`/`start`, and `agent validate`. Owner: repo-maintainer role. Staleness trigger: a referenced skill path that stops resolving to a SKILL.md (in the target repo or the packaged skills tree) fails `agent validate` — fix the path or the pack, or remove the binding; do not leave it broken.",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Bindings policy format version."
+    },
+    "roles": {
+      "type": "object",
+      "description": "One entry per role id (docs/DESIGN.md §2 roles/, spec Appendix F). A role may be omitted entirely if it has no binding; role ids not in this enum are rejected to catch typos.",
+      "properties": {
+        "workflow-compiler": { "$ref": "#/$defs/roleEntry" },
+        "uncertainty-resolver": { "$ref": "#/$defs/roleEntry" },
+        "domain-product-clarifier": { "$ref": "#/$defs/roleEntry" },
+        "specifier": { "$ref": "#/$defs/roleEntry" },
+        "architect": { "$ref": "#/$defs/roleEntry" },
+        "task-decomposer": { "$ref": "#/$defs/roleEntry" },
+        "control-plane": { "$ref": "#/$defs/roleEntry" },
+        "worker": { "$ref": "#/$defs/roleEntry" },
+        "verifier": { "$ref": "#/$defs/roleEntry" },
+        "reviewer": { "$ref": "#/$defs/roleEntry" },
+        "merge-refinery": { "$ref": "#/$defs/roleEntry" },
+        "learning-evaluator": { "$ref": "#/$defs/roleEntry" }
+      },
+      "additionalProperties": false
+    },
+    "active_harness": {
+      "type": "string",
+      "enum": ["generic", "claude-code", "cursor"],
+      "description": "Default harness used to resolve `skills` recommendations printed at `agent task claim`/`start`, and the default target for `agent skills install` when --harness is omitted."
+    },
+    "install": {
+      "type": "object",
+      "description": "Optional per-harness discovery-path overrides for `agent skills install` (defaults: claude-code -> .claude/skills, cursor -> .cursor/skills; generic writes .agent/skills-index.md instead of copying files, so a generic override names that index file's directory).",
+      "properties": {
+        "claude-code": { "type": "string", "minLength": 1 },
+        "cursor": { "type": "string", "minLength": 1 },
+        "generic": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["version", "roles", "active_harness"],
+  "additionalProperties": false,
+  "$defs": {
+    "roleEntry": {
+      "type": "object",
+      "description": "Skill bindings for one role.",
+      "properties": {
+        "startup_skills": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Skill paths (repo-root-relative into the platform's skills tree, e.g. 'skills/worker-startup') printed by `agent task claim`/`start` as 'Required before work begins' for tasks bound to this role. Harness-neutral: these are not per-harness."
+        },
+        "skills": {
+          "type": "object",
+          "description": "Harness-recommended skill paths for this role (informational for the agent; gates do the enforcing, never skill presence alone).",
+          "properties": {
+            "generic": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "claude-code": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "cursor": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

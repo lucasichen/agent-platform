@@ -3782,3 +3782,66 @@ pipeline unchanged
 ```
 
 A tool earns its slot by meeting the contract, and keeps it the same way.
+
+---
+
+# Appendix G — Verified Tool Provenance and Binding Decisions
+
+*Added 2026-08-31 (platform revision). Owner: repo-maintainer. Staleness trigger: provenance verified as of the date above; entries older than 90 days are hints, not truth — re-verify against the upstream repos. Full integration plan: `docs/integrations.md` in the platform repo.*
+
+The spec names tools without provenance. All have been located, read, and license-verified at source:
+
+| Spec name | Verified project | Author | License |
+|---|---|---|---|
+| pstack | github.com/cursor/plugins → `pstack/` | Lauren Tan | MIT (`pstack/LICENSE`) |
+| Matt | github.com/mattpocock/skills | Matt Pocock | MIT |
+| Superpowers | github.com/obra/superpowers | Jesse Vincent | MIT |
+| gstack | github.com/garrytan/gstack | Garry Tan | MIT |
+| Hermes | github.com/NousResearch/hermes-agent (Kanban subsystem) | Nous Research | MIT |
+| Gas Town / Gas City / Beads | github.com/gastownhall | Steve Yegge | MIT |
+
+"Field Guide memory" (§12.1) is this spec's own pattern (inspired by Cursor's experimental Field Guide concept), not a third-party product; the platform builds it.
+
+## G.1 Binding decisions
+
+Adoption is by the three-layer binding model (contracts → vendored/adapted skills → operator-installed native plugins); gates never move regardless of binding. Decisions, per role:
+
+```text
+F1/F1A/F2/F4   Matt Pocock skills (wayfinder, research, prototype,
+               grill-with-docs, domain-modeling, to-spec, to-tickets)
+               — the planning backbone, outputs re-pointed at the
+               platform artifact graph and task schema
+
+F3             pstack /architect + /arena (arena only when multiple
+               consequential designs are credible)
+
+F5             platform `agent` CLI is the reference binding
+               (amends §6.2's "use Hermes first": the CLI implements
+               the same F.5 contract harness-agnostically; Hermes
+               Kanban documented as optional 5–20-tier alternative;
+               Gas City is the earned candidate above it per §14.0)
+
+F6             worker-startup (platform glue, task-start trigger)
+               → pstack poteto-mode + principle-* for structure/style
+               + Superpowers TDD / systematic-debugging /
+               verification-before-completion for methodology.
+               Superpowers is scoped to execution only — its planning
+               skills duplicate the Matt chain (whiteboard decision).
+               pstack is risk-gated: not every task pays for every
+               skill (§10.5 decides).
+
+F7             gstack qa (web), ios-qa real-device USB loop (iOS),
+               + Playwright / Testcontainers / deterministic harnesses
+
+F8             Matt code-review (spec lens, two-axis) + pstack
+               /interrogate (adversarial/architecture) + /unslop
+
+F9             merge queue now; gstack ship / land-and-deploy /
+               canary as release binding; Gas Town Refinery at scale
+
+F10            pstack /reflect (fast loop, Accepted/Rejected/Backlog
+               synthesis), /automate-me (slow loop), pstack eval
+               playbook for configuration canaries (§13.6)
+```
+
+Distribution: pinned MIT snapshots under `skills/vendor/<pack>/` with upstream commit + adaptation log (`VENDOR.md`); harness delivery via a gstack-style host-adapter layer (`agent skills install --harness ...`); active bindings declared in `policies/bindings.yaml`; `agent task claim` announces the resolved binding and startup skills.
